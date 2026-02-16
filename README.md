@@ -16,6 +16,7 @@ Sözleşmesi imzalanan ihalelerin, partiler halinde alımı esnasında  süreç 
 ![ihale_takip_sistemi_10](img/ihale_takip_10.png)
 ![ihale_takip_sistemi_11](img/ihale_takip_11.png)
 ![ihale_takip_sistemi_12](img/ihale_takip_12.png)
+![ihale_takip_sistemi_04](img/ihale_takip_04.png)
 ![ihale_takip_sistemi_13](img/ihale_takip_13.png)
 ![ihale_takip_sistemi_14](img/ihale_takip_14.png)
 ![ihale_takip_sistemi_15](img/ihale_takip_15.png)
