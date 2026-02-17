@@ -4,7 +4,16 @@ Sözleşmesi imzalanan ihalelerin, partiler halinde alımı esnasında  süreç 
 
 ## Ekran Görüntüleri ve Açıklamalar
 
+Örnek Veri tabanında kayıtlı kullanıcı bilgisi;
+
+**Kullanıcı adı** : admin
+
+**Şifre**: admin
+
 ![ihale_takip_sistemi_01](img/ihale_takip_01.png)
+
+
+
 ![ihale_takip_sistemi_02](img/ihale_takip_02.png)
 ![ihale_takip_sistemi_03](img/ihale_takip_03.png)
 ![ihale_takip_sistemi_04](img/ihale_takip_04.png)
