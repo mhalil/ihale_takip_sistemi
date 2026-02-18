@@ -726,7 +726,7 @@ class NewTenderDialog(QDialog):
         self.fields = {}
         
         form_items = [
-            ("IKN", "Örn: 2024/12345"),
+            ("IKN", "Örn: 2026/12345"),
             ("Ihale Adi", "İhale başlığını giriniz"),
             ("Yuklenici Firma", "Firma adını giriniz"),
             ("Sözleşme Tutarı (TL)", "0.00"),
@@ -739,7 +739,7 @@ class NewTenderDialog(QDialog):
         # IKN
         layout.addWidget(QLabel("<b>IKN:</b>"))
         self.fields["IKN"] = QLineEdit()
-        self.fields["IKN"].setPlaceholderText("Örn: 2024/12345")
+        self.fields["IKN"].setPlaceholderText("Örn: 2026/12345")
         layout.addWidget(self.fields["IKN"])
 
         # Ihale Adi
@@ -757,7 +757,7 @@ class NewTenderDialog(QDialog):
         # Sözleşme Tutarı
         layout.addWidget(QLabel("<b>Sözleşme Tutarı (TL):</b>"))
         self.fields["Sözleşme Tutarı (TL)"] = QLineEdit()
-        self.fields["Sözleşme Tutarı (TL)"].setPlaceholderText("1.234,56")
+        self.fields["Sözleşme Tutarı (TL)"].setPlaceholderText("123.456.789,00 - Virgül ile ondalık kısmı da yazın")
         # Sadece rakam, nokta ve virgül girişine izin ver
         regex = QRegularExpression("[0-9.,]+")
         validator = QRegularExpressionValidator(regex)
@@ -869,6 +869,9 @@ class NewTenderDialog(QDialog):
 
             timestamp = datetime.now().strftime("%d.%m.%Y %H:%M")
             audit_info = f"Kayıt: {CURRENT_USER} ({timestamp})"
+
+            conn = get_db_connection()
+            cursor = conn.cursor()
 
             for i in range(1, parti_sayisi + 1):
                 teslim_tarihi = (ilk_tarih + timedelta(days=termin_araligi*(i-1))).strftime("%Y-%m-%d")
@@ -2477,12 +2480,12 @@ class AboutDialog(QDialog):
         
         # Info Text
         info_text = """
-        <h3 style='color: #6366f1; margin-bottom:0;'>İhale Takip Uygulaması v3.14</h3>
+        <h3 style='color: #6366f1; margin-bottom:0;'>İhale Takip Uygulaması v3.15</h3>
         <br>
         <b>Geliştirici Bilgileri:</b></p>
         <ul>
         <li>Geliştirici: Mustafa Halil GÖRENTAŞ</li>
-        <li>E-Posta: <a href='mailto:halil.mustafa@gmail.com' style='color: #2563eb; text-decoration: none;'>halil.mustafa@gmail.com</a></li>
+        <li>Kaynak Kod: <a href="https://github.com/mhalil/ihale_takip_sistemi">github.com/mhalil/ihale_takip_sistemi</a></li>
         </ul>
         <p><b>Teknik Bilgiler:</b></p>
         <ul>
