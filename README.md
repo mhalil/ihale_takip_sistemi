@@ -1,6 +1,67 @@
 # İhale Takip Sistemi
 
-Sözleşmesi imzalanan ihalelerin, partiler halinde alımı esnasında  süreç takibi için kullanılabilecek Uygulama.
+**İhale Takip Sistemi**, şirketiniz veya kurumunuz bünyesindeki ihale süreçlerini, teslimat partilerini, test aşamalarını ve ödeme süreçlerini adım adım ve düzenli bir şekilde takip etmenizi sağlayan kapsamlı bir masaüstü uygulamasıdır. İçerisindeki modüler sekmeler, loglama ve veritabanı otomasyonları ile güvenli ve hızlı veri takibi sağlar.
+
+## 🚀 Özellikler
+
+- **Çoklu Kullanıcı ve Rol Yönetimi:** Bireysel kullanıcılar (user) ile tam yetkili yöneticiler (admin) oluşturabilme.
+- **Otomatik Veritabanı Yedekleme:** Uygulama her açıldığında son alınan yedeği kontrol eder ve 7 tam günde bir (haftalık) otomatik yedek alarak olası veri kayıplarının önüne geçer.
+- **Kapsamlı İhale ve Parti Yönetimi:** İhalelere ait sözleşme tutarı, firma bilgisi, İKN ve alt teslimat partilerini tek bir noktadan güvenle kolayca sisteme girebilirsiniz.
+- **Detaylı Süreç Takibi:** Ambar teslimi, test süreçleri, muayene-kabul durumu ve ödeme belgesi oluşturma aşamalarının interaktif check-box'larla takibi.
+- **Yaklaşan Teslimatlar ve Takvim:** Teslimat tarihlerini takvim üzerinden görebilme; geciken veya yaklaşan teslimatların hücre renkleriyle (Kırmızı/Turuncu) görsel olarak uyarılması.
+- **Gelişmiş Raporlama ve Özetler:** Firma bazlı ve ihale bazlı verilerin yıllara göre filtrelenerek finansal ve iş hacmi olarak özetinin çıkarılması.
+- **İşlem Geçmişi (Logs):** Yöneticiler için sistemde yapılan veri girişleri, şifre değişimleri, eklentiler ve silme işlemlerinin kaydedildiği log izleme ekranı.
+- **Modern ve Özelleştirilebilir Arayüz:** Kullanıcı dostu ve dinamik tasarım. İstek doğrultusunda tek bir butonla menüler arasında "Karanlık Mod/Aydınlık Mod" (Dark/Light Mode) geçişleri.
+- **PySide6 / PyQt6 Esnekliği:** Sisteminizde kurulu olan modern kütüphanelerden (PySide6 öncelikli olmak üzere) birini tespit ederek dinamik olarak çalışır.
+
+## 🛠️ Kurulum ve Çalıştırma
+
+### Gereksinimler
+
+- Python 3.10 veya üzeri
+- `PySide6` veya `PyQt6` kütüphanesi
+
+```bash
+# Gerekli kütüphaneyi yüklemek için:
+pip install PySide6
+# veya
+pip install PyQt6
+```
+
+### Uygulamayı Başlatma
+
+Proje dizinine komut satırında geçiş yaparak ana Python dosyasını çalıştırın:
+
+```bash
+cd "C:\Python Kod sahası\İhale Takip\"
+python ihale_takip_sistemi.py
+```
+
+## 🖥️ Arayüz ve Ana Modüller
+
+Uygulama başlatıldığında ekranın üst tarafındaki tablardan 6 ana modüle erişilebilir:
+
+1. **📊 Güncel İhale ve Parti Bilgileri:** Devam eden, ödemesi henüz tamamlanmamış ve teslimatı beklenen tüm ihale partilerini kritik tarihlere göre listeler. En çok kullanılan ana takip ekranıdır.
+2. **📋 İhale ve Parti Bilgilerini Düzenle:** Yeni bir parti/ihale girişi yapılan, silinen, ve her partinin süreç duraklarının detaylıca düzenlendiği sekme.
+3. **📅 Takvim Görünümü:** Tüm partilerin teslim tarihlerini geniş bir takvim paneli üzerinde görmenizi sağlar.
+4. **🏢 İhale Detayları:** Ayrı partileri ihaleler ve İKN çerçevesinde birleştirerek sözleşme bütününde okumanıza olanak tanır.
+5. **🏭 Firma Özetleri:** Yıllık performansa bağlı olarak hangi alt yüklenici firmanın toplamda kaç iş aldığını ve finansal hacimlerini hesaplar.
+6. **📜 İşlem Kayıtları:** (Sisteme sadece "Admin" rolündeki kullanıcılar ile giriş yapıldığında görünür.) Uygulama içindeki hareketleri log tablosundan yansıtır.
+
+## 🔐 Kullanıcı Girişi ve Yetkilendirme
+
+- Uygulama ilk kez çalıştırıldığında veriler içerisinde varsayılan olarak **admin** (Şifre: **admin**) hesabı oluşturulur. 
+- Giriş yaptıktan sonra sağ üstteki "Kullanıcı" butonuna tıklayarak profil şifrenizi değiştirebilirsiniz. 
+- Sadece `admin` yetkisine sahip hesaplar "Yeni Kullanıcı" ekleyebilir ve diğer personellerin rollerini değiştirebilir. 
+- Hesaptan tek bir butonla çıkabilir, aynı bilgisayarı başkalarıyla kullanırken verilerinizin güvenliğini sağlayabilirsiniz.
+
+## 🗄️ Veritabanı Yedekleme Sistemi (Otomasyon)
+
+Sistemin verileri yerel bir SQLite veritabanı dosyasında (`veriler.db`) güvenli şekilde barındırılır. 
+Kodun ana çalışmasına entegre ettiğimiz `check_and_create_backup()` fonksiyonu sayesinde:
+
+- Sistem kök dizininde otomatik bir `Yedekler` klasörü oluşturulur.
+- Hafta dönüşlerinde (Son yedeğin üzerinden 7 gün tamamlandığında) tüm veriler o saniyenin timestamp ismiyle dondurulup kopyalanır (`veriler_yedek_YYYY-MM-DD_HH-MM-SS.db`). Manuel işlem veya onay gerektirmez.
 
 ## Ekran Görüntüleri ve Açıklamalar
 
@@ -169,9 +230,12 @@ Hakkında Penceresi;
 
 ![ihale_takip_sistemi_28](img/ihale_takip_28.png)
 
-**Geliştirici Bilgileri:**
+## 👨‍💻 Geliştirici ve Destek
 
-* Geliştirici: Mustafa Halil GÖRENTAŞ
+- **Geliştirici:** Mustafa Halil GÖRENTAŞ
+- **Kaynak Kod / İletişim:** [GitHub - mhalil](https://github.com/mhalil/ihale_takip_sistemi)
+- **Lisans:** GPL (Genel Kamu Lisansı)
+  *Bu yazılım Google DeepMind platformundaki gelişmiş Agent'ler ile (Antigravity) vibecoding mantığıyla desteklenerek oluşturulmuştur.*
 
 **Teknik Bilgiler:**
 
