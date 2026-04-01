@@ -915,9 +915,9 @@ class NewTenderDialog(QDialog):
         layout.addWidget(self.fields["Sözleşme Tutarı (TL)"])
 
         # Parti Miktarı
-        layout.addWidget(QLabel("<b>Parti Miktarı:</b>"))
+        layout.addWidget(QLabel("<b>Parti Miktarı (Her parti için kaydedilecek miktar):</b>"))
         self.fields["Parti Miktarı"] = QLineEdit()
-        self.fields["Parti Miktarı"].setPlaceholderText("Örn: 1.000,00")
+        self.fields["Parti Miktarı"].setPlaceholderText("Örn: 5.000")
         # Sadece rakam, nokta ve virgül girişine izin ver
         regex = QRegularExpression("[0-9.,]+")
         validator = QRegularExpressionValidator(regex)

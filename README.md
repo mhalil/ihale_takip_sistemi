@@ -100,9 +100,20 @@ Bu seçenek, yanlış girilmiş verileri düzeltmek için kullanılacağı gibi,
 Aşağıda, Yeni Parti Bilgisi Ekleme sonrası (6, 7 ve 8. satırlardaki) ihaleye ait güncel görüntü mevcuttur.  
 
 ![ihale_takip_sistemi_07](img/ihale_takip_07.png)
+
 **İhale ve Parti Bilgilerini Düzenle** sekmesinde bulunan **Düzenle** butonuna basarak mevcut bilgiler düzenlenebilir / güncellenebilir. Değişiklikler kaydedildiğinde, değişikliği yapan kullanıcı ve tarih/zaman bilgisi eklenir.
 
 ![ihale_takip_sistemi_08](img/ihale_takip_08.png)
+
+**İhale ve Parti Bilgilerini Düzenle** sekmesinde birden fazla kayıt, `CTRL` tuşu ile tek tek seçilebileceği gibi `SHIFT` tuşu yardımıyla iki seçim arası da topluca seçilebilir.
+
+Seçime Sağ tıklanıp açılan menüden **Seçili Kayıtları Topluca Düzenle** butonuna basarak mevcut bilgiler toplu olarak düzenlenebilir / güncellenebilir.
+
+![ihale_takip_sistemi_08_2](img/ihale_takip_08_2.png)
+
+Seçime Sağ tıklanıp açılan menüden **Seçili Parti Son Teslim Tarihlerini Ötele** butonuna basarak mevcut Parti Son Teslim Tarihleri toplu olarak ileri ya da geri yönlü ötelenebilir. Öteleme onaylandığında gerçekleşecek Yeni Tarih bilgisi önizleme ekranında görüntülenir.
+
+![ihale_takip_sistemi_08_3](img/ihale_takip_08_3.png)
 
 **İhale ve Parti Bilgilerini Düzenle** sekmesinde de, Arama ve Filtreleme seçenekleri mevcut.
 
