@@ -13,11 +13,11 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                 QTabWidget, QScrollArea, QComboBox, QListView,  
                                 QMessageBox, QDateEdit, QGraphicsDropShadowEffect, QGridLayout, 
                                 QSplitter, QCalendarWidget, QStyledItemDelegate, QStyle,
-                                QFileDialog
+                                QFileDialog, QTextEdit
                                 )
-from PySide6.QtCore import Qt, QDate, QRegularExpression, QSettings
+from PySide6.QtCore import Qt, QDate, QRegularExpression, QSettings, QEvent
 from PySide6.QtGui import (QIntValidator, QRegularExpressionValidator, QFont, 
-                            QColor,  QTextCharFormat, QBrush, QPainter)
+                            QColor,  QTextCharFormat, QBrush, QPainter, QStandardItem, QStandardItemModel)
 
 # --- MODERN UI CONFIG ---
 class DropdownDelegate(QStyledItemDelegate):
@@ -42,7 +42,8 @@ class DropdownDelegate(QStyledItemDelegate):
             super().paint(painter, option, index)
 
 COMMON_STYLE = """
-QTabWidget::pane { border: none; background: transparent; }
+QTabWidget::pane { border: none; }
+QTabWidget > QWidget { background: transparent; }
 QTabBar::tab { padding: 10px 20px; border-top-left-radius: 8px; border-top-right-radius: 8px; margin-right: 2px; font-weight: bold; }
 QPushButton { border-radius: 6px; padding: 8px 16px; font-weight: bold; border: none; }
 QLineEdit, QComboBox, QDateEdit { border-radius: 6px; padding: 8px; }
@@ -53,7 +54,8 @@ QScrollBar::handle:vertical { min-height: 20px; border-radius: 5px; }
 """
 
 LIGHT_STYLE = COMMON_STYLE + """
-QMainWindow { background-color: #f1f5f9; }
+QMainWindow, QDialog { background-color: #f1f5f9; }
+QToolTip { background-color: #1e293b; color: #f8fafc; border: 1px solid #334155; }
 QTabBar::tab { background: #cbd5e1; color: #475569; }
 QTabBar::tab:selected { background: #6366f1; color: white; }
 QPushButton { background-color: #6366f1; color: white; }
@@ -71,15 +73,16 @@ QPushButton#WarningBtn:hover { background-color: #d97706; }
 QPushButton#InfoBtn { background-color: #CDAB8F; color: white; }
 QPushButton#InfoBtn:hover { background-color: #986A44; }
 QLineEdit, QComboBox, QDateEdit { background-color: white; border: 1px solid #94a3b8; color: #1e293b; }
-QTableWidget { background-color: white; border: 1px solid #cbd5e1; gridline-color: #e2e8f0; color: #1e293b; alternate-background-color: #eff6ff; }
+QTableWidget, QListWidget { background-color: white; border: 1px solid #cbd5e1; gridline-color: #e2e8f0; color: #1e293b; alternate-background-color: #eff6ff; }
 QHeaderView::section { background-color: #e2e8f0; color: #475569; }
 QScrollBar:vertical { background: #e2e8f0; }
 QScrollBar::handle:vertical { background: #94a3b8; }
-QScrollArea, QScrollArea QWidget { background-color: #f1f5f9; border: none; }
+QScrollArea, QScrollArea QWidget, QTabWidget::pane { background-color: #f1f5f9; border: none; }
 """
 
 DARK_STYLE = COMMON_STYLE + """
 QMainWindow, QDialog { background-color: #0f172a; }
+QToolTip { background-color: #1e293b; color: #f8fafc; border: 1px solid #334155; }
 QTabBar::tab { background: #1e293b; color: #94a3b8; }
 QTabBar::tab:selected { background: #6366f1; color: white; }
 QPushButton { background-color: #6366f1; color: white; }
@@ -98,7 +101,7 @@ QPushButton#InfoBtn { background-color: #CDAB8F; color: white; }
 QPushButton#InfoBtn:hover { background-color: #986A44; }
 QLineEdit, QComboBox, QDateEdit, QTextEdit { background-color: #1e293b; border: 1px solid #334155; color: #f8fafc; }
 QComboBox QAbstractItemView {background-color: #1e293b; color: #f8fafc; selection-background-color: #6366f1; selection-color: white; border: 1px solid #334155; outline: none; }
-QTableWidget { background-color: #1e293b; border: 1px solid #334155; gridline-color: #0f172a; color: #f8fafc; alternate-background-color: #2d3d5a; }
+QTableWidget, QListWidget { background-color: #1e293b; border: 1px solid #334155; gridline-color: #0f172a; color: #f8fafc; alternate-background-color: #2d3d5a; }
 QHeaderView::section { background-color: #334155; color: #94a3b8; }
 QScrollBar:vertical { background: #1e293b; }
 QScrollBar::handle:vertical { background: #475569; }
@@ -107,12 +110,137 @@ QCheckBox::indicator { width: 20px; height: 20px; border: 2px solid #334155; bor
 QCheckBox::indicator:checked { background-color: #6366f1; border-color: #6366f1; }
 QCheckBox::indicator:indeterminate { background-color: #94a3b8; border-color: #94a3b8; }
 QCheckBox::indicator:unchecked:hover { border-color: #6366f1; }
-QScrollArea, QScrollArea QWidget { background-color: #0f172a; border: none; }
-QTreeWidget { background-color: #1e293b; border: 1px solid #334155; color: #f8fafc; outline: none; }
-QTreeWidget::item { padding: 4px; }
-QTreeWidget::item:selected { background-color: #6366f1; color: white; }
-QTreeWidget::item:hover { background-color: #2d3d5a; }
+QScrollArea, QScrollArea QWidget, QTabWidget::pane { background-color: #0f172a; border: none; }
+QTreeWidget, QListWidget { background-color: #1e293b; border: 1px solid #334155; color: #f8fafc; outline: none; }
+QTreeWidget::item, QListWidget::item { padding: 4px; }
+QTreeWidget::item:selected, QListWidget::item:selected { background-color: #6366f1; color: white; }
+QTreeWidget::item:hover, QListWidget::item:hover { background-color: #2d3d5a; }
 """
+
+def get_labs():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM labs")
+        labs = [r[0] for r in cursor.fetchall()]
+        conn.close()
+        
+        # Türkçe Alfabetik Sıralama (ç, ğ, ı, ö, ş, ü dikkate alınarak)
+        tr_alphabet = "AaBbCcÇçDdEeFfGgĞğHhIıİiJjKkLlMmNnOoÖöPpRrSsŞşTtUuÜüVvYyZz"
+        tr_key_map = {c: i for i, c in enumerate(tr_alphabet)}
+        def tr_sort(s):
+            return [tr_key_map.get(c, ord(c)) for c in s]
+            
+        return sorted(labs, key=tr_sort)
+    except:
+        return ["TSE", "İSTON", "Royaltest", "Teknolab"]
+
+class MultiSelectComboBox(QComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setEditable(True)
+        self.lineEdit().setReadOnly(True)
+        self.lineEdit().setPlaceholderText("Laboratuvar seçin...")
+        self.closeOnSelect = False
+        
+        # Standart model yerine checkable itemları destekleyen model
+        self.model().itemChanged.connect(self.update_text)
+        self.view().viewport().installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        # Popup açıkken tıklamada kapanmasını engelle
+        if obj == self.view().viewport() and event.type() == QEvent.Type.MouseButtonRelease:
+            # position().toPoint() modern PySide6 kullanımıdır
+            index = self.view().indexAt(event.position().toPoint())
+            item = self.model().itemFromIndex(index)
+            if item:
+                if item.text() == "+ Yeni Laboratuvar Ekle...":
+                    self.add_custom_lab_dialog()
+                else:
+                    item.setCheckState(Qt.CheckState.Unchecked if item.checkState() == Qt.CheckState.Checked else Qt.CheckState.Checked)
+            return True
+        return super().eventFilter(obj, event)
+
+    def add_custom_lab_dialog(self):
+        new_lab, ok = QtWidgets.QInputDialog.getText(self, "Laboratuvar Ekle", "Yeni Laboratuvar Adı:", QLineEdit.EchoMode.Normal)
+        if ok and new_lab.strip():
+            lab_name = new_lab.strip()[:50] # 50 karakter sınırı
+            
+            # Veri tabanına kalıcı olarak ekle (Ayarlar'da da görünsün)
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("INSERT OR IGNORE INTO labs (name) VALUES (?)", (lab_name,))
+                conn.commit()
+                conn.close()
+            except: pass
+
+            # Zaten varsa sadece işaretle
+            for i in range(self.model().rowCount()):
+                if self.model().item(i).text() == lab_name:
+                    self.model().item(i).setCheckState(Qt.CheckState.Checked)
+                    return
+            
+            # Yeni item ekle (Ekle butonunun bir üstüne)
+            item = QStandardItem(lab_name)
+            item.setCheckable(True)
+            item.setCheckState(Qt.CheckState.Checked)
+            self.model().insertRow(self.model().rowCount() - 1, item)
+            self.update_text()
+
+    def add_labs(self, labs, current_val=""):
+        self.model().blockSignals(True)
+        self.model().clear()
+        current_list = [x.strip() for x in current_val.split(",")] if current_val else []
+        
+        # Ana liste
+        for lab in labs:
+            item = QStandardItem(lab)
+            item.setCheckable(True)
+            if lab in current_list:
+                item.setCheckState(Qt.CheckState.Checked)
+            else:
+                item.setCheckState(Qt.CheckState.Unchecked)
+            self.model().appendRow(item)
+        
+        # Listede olmayan ama veride olan "özel" girişleri ekle
+        for val in current_list:
+            if val and val not in labs:
+                item = QStandardItem(val)
+                item.setCheckable(True)
+                item.setCheckState(Qt.CheckState.Checked)
+                self.model().appendRow(item)
+
+        # En sona ekleme butonu
+        add_item = QStandardItem("+ Yeni Laboratuvar Ekle...")
+        add_item.setCheckable(False)
+        add_item.setForeground(QColor("#6366f1")) # Indigo rengi
+        font = QFont()
+        font.setBold(True)
+        add_item.setFont(font)
+        self.model().appendRow(add_item)
+
+        self.model().blockSignals(False)
+        self.update_text()
+
+    def update_text(self):
+        checked_items = []
+        for i in range(self.model().rowCount()):
+            item = self.model().item(i)
+            if item and item.checkState() == Qt.CheckState.Checked:
+                checked_items.append(item.text())
+        
+        res = ", ".join(checked_items)
+        self.lineEdit().setText(res)
+        self.setToolTip(res)
+
+    def get_checked_items(self):
+        items = []
+        for i in range(self.model().rowCount()):
+            item = self.model().item(i)
+            if item and item.checkState() == Qt.CheckState.Checked:
+                items.append(item.text())
+        return ", ".join(items)
 
 # --- GLOBAL CONFIG ---
 COLUMN_MAPPING = {
@@ -591,6 +719,25 @@ def get_db_connection():
             conn.commit()
         except:
             pass
+
+    # Test Detay sütunları ekleme (Eğer yoksa)
+    for col in ["Testler Basladi Detay", "Test Sonuclari Geldi Detay"]:
+        try:
+            cursor.execute(f"SELECT `{col}` FROM data LIMIT 1")
+        except sqlite3.OperationalError:
+            try:
+                cursor.execute(f"ALTER TABLE data ADD COLUMN `{col}` TEXT")
+                conn.commit()
+            except:
+                pass
+
+    # Laboratuvar tablosu ekleme (Eğer yoksa)
+    cursor.execute("CREATE TABLE IF NOT EXISTS labs (id INTEGER PRIMARY KEY, name TEXT UNIQUE)")
+    cursor.execute("SELECT count(*) FROM labs")
+    if cursor.fetchone()[0] == 0:
+        for lab in ["TSE", "İSTON", "Royaltest", "Teknolab"]:
+            cursor.execute("INSERT OR IGNORE INTO labs (name) VALUES (?)", (lab,))
+        conn.commit()
 
     # Ensure users table exists
     cursor.execute("""
@@ -1350,11 +1497,12 @@ class NewBatchDialog(QDialog):
 
 # --- DÜZENLEME PENCERESİ ---
 class EditDialog(QDialog):
-    def __init__(self, record, parent=None):
+    def __init__(self, record, parent=None, simplified=False):
         super().__init__(parent)
         self.record = record
         self.rowid = record[0]
-        self.setWindowTitle("Kayıt Düzenle")
+        self.simplified = simplified
+        self.setWindowTitle("Hızlı Durum Güncelle" if simplified else "Kayıt Düzenle")
         self.setFixedWidth(650)
         self.setup_ui()
         
@@ -1362,54 +1510,64 @@ class EditDialog(QDialog):
         layout = QVBoxLayout(self)
 
         # --- Temel Bilgiler ---
-        layout.addWidget(QLabel("<b>Temel Bilgiler:</b>"))
+        if not self.simplified:
+            layout.addWidget(QLabel("<b>Temel Bilgiler:</b>"))
 
-        self.ihale_edit = QLineEdit(self.record[3])
-        layout.addWidget(QLabel("Ihale Adi:"))
-        layout.addWidget(self.ihale_edit)
+            self.ihale_edit = QLineEdit(self.record[3])
+            layout.addWidget(QLabel("Ihale Adi:"))
+            layout.addWidget(self.ihale_edit)
 
-        self.firma_edit = QLineEdit(self.record[2])
-        layout.addWidget(QLabel("Yuklenici Firma:"))
-        layout.addWidget(self.firma_edit)
+            self.firma_edit = QLineEdit(self.record[2])
+            layout.addWidget(QLabel("Yuklenici Firma:"))
+            layout.addWidget(self.firma_edit)
 
-        self.parti_no_edit = QLineEdit(str(self.record[4]))
-        self.parti_no_edit.setValidator(QIntValidator(1, 1000))
-        layout.addWidget(QLabel("Parti No:"))
-        layout.addWidget(self.parti_no_edit)
+            self.parti_no_edit = QLineEdit(str(self.record[4]))
+            self.parti_no_edit.setValidator(QIntValidator(1, 1000))
+            layout.addWidget(QLabel("Parti No:"))
+            layout.addWidget(self.parti_no_edit)
 
-        miktar_val = str(self.record[16]) if len(self.record) > 16 and self.record[16] else ""
-        self.miktar_edit = QLineEdit(miktar_val)
-        self.miktar_edit.setValidator(QRegularExpressionValidator(QRegularExpression(r"[0-9\.,]*")))
-        self.miktar_edit.textEdited.connect(lambda text: self.format_on_type(self.miktar_edit, text))
-        layout.addWidget(QLabel("Parti Miktarı:"))
-        layout.addWidget(self.miktar_edit)
+            miktar_val = str(self.record[16]) if len(self.record) > 16 and self.record[16] else ""
+            self.miktar_edit = QLineEdit(miktar_val)
+            self.miktar_edit.setValidator(QRegularExpressionValidator(QRegularExpression(r"[0-9\.,]*")))
+            self.miktar_edit.textEdited.connect(lambda text: self.format_on_type(self.miktar_edit, text))
+            layout.addWidget(QLabel("Parti Miktarı:"))
+            layout.addWidget(self.miktar_edit)
 
-        # --- Malzeme Detayı (çok satırlı) ---
-        from PySide6.QtWidgets import QTextEdit
-        layout.addWidget(QLabel("Malzeme Detayı:"))
-        self.malzeme_detayi_edit = QTextEdit()
-        self.malzeme_detayi_edit.setFixedHeight(80)
-        self.malzeme_detayi_edit.setPlaceholderText("Malzeme detayını giriniz...")
-        malzeme_val = str(self.record[18]) if len(self.record) > 18 and self.record[18] else ""
-        self.malzeme_detayi_edit.setPlainText(malzeme_val)
-        layout.addWidget(self.malzeme_detayi_edit)
+            # --- Malzeme Detayı (çok satırlı) ---
+            layout.addWidget(QLabel("Malzeme Detayı:"))
+            self.malzeme_detayi_edit = QTextEdit()
+            self.malzeme_detayi_edit.setFixedHeight(80)
+            self.malzeme_detayi_edit.setPlaceholderText("Malzeme detayını giriniz...")
+            malzeme_val = str(self.record[18]) if len(self.record) > 18 and self.record[18] else ""
+            self.malzeme_detayi_edit.setPlainText(malzeme_val)
+            layout.addWidget(self.malzeme_detayi_edit)
 
-        self.tutar_edit = QLineEdit(format_money(self.record[6]))
-        self.tutar_edit.setValidator(QRegularExpressionValidator(QRegularExpression(r"[0-9\.,]*")))
-        self.tutar_edit.textEdited.connect(lambda text: self.format_on_type(self.tutar_edit, text))
-        layout.addWidget(QLabel("Parti Tutari:"))
-        layout.addWidget(self.tutar_edit)
+            self.tutar_edit = QLineEdit(format_money(self.record[6]))
+            self.tutar_edit.setValidator(QRegularExpressionValidator(QRegularExpression(r"[0-9\.,]*")))
+            self.tutar_edit.textEdited.connect(lambda text: self.format_on_type(self.tutar_edit, text))
+            layout.addWidget(QLabel("Parti Tutari:"))
+            layout.addWidget(self.tutar_edit)
 
-        self.tarih_edit = QDateEdit()
-        self.tarih_edit.setCalendarPopup(True)
-        try:
-            if self.record[5]:
-                d = datetime.strptime(str(self.record[5])[:10], "%Y-%m-%d")
-                self.tarih_edit.setDate(QDate(d.year, d.month, d.day))
-        except:
-            self.tarih_edit.setDate(QDate.currentDate())
-        layout.addWidget(QLabel("Teslim Tarihi:"))
-        layout.addWidget(self.tarih_edit)
+            self.tarih_edit = QDateEdit()
+            self.tarih_edit.setCalendarPopup(True)
+            try:
+                if self.record[5]:
+                    d = datetime.strptime(str(self.record[5])[:10], "%Y-%m-%d")
+                    self.tarih_edit.setDate(QDate(d.year, d.month, d.day))
+            except:
+                self.tarih_edit.setDate(QDate.currentDate())
+            layout.addWidget(QLabel("Teslim Tarihi:"))
+            layout.addWidget(self.tarih_edit)
+        else:
+            # Simplified mode: Show a brief header with IKN and Firm
+            title_color = "#818cf8" # Light Indigo
+            val_color = "#f8fafc"   # Off-white
+            header_text = (f"<span style='color:{title_color}; font-weight:bold;'>IKN:</span> {self.record[1]} | "
+                           f"<span style='color:{title_color}; font-weight:bold;'>Firma:</span> {self.record[2]}<br>"
+                           f"<span style='color:{title_color}; font-weight:bold;'>İhale:</span> {self.record[3]} (Parti {self.record[4]})")
+            header_lbl = QLabel(header_text)
+            header_lbl.setStyleSheet(f"font-size: 13px; color: {val_color}; padding: 8px; background: #1e293b; border-radius: 6px; border: 1px solid #334155;")
+            layout.addWidget(header_lbl)
         # NOT: Sözleşme Tarihi bu diyalogda gösterilmez; sadece Toplu Düzenle'de mevcuttur.
 
         # --- İşlem Adımları ---
@@ -1424,6 +1582,15 @@ class EditDialog(QDialog):
                  ("Testler Başladı", 8), ("Test Sonuçları Geldi", 9),
                  ("Kabul Raporu imzada", 10), ("Kabul Yapıldı", 11), ("Ödeme Belgesi Oluşturuldu", 13)]
         
+        # Test detayları için çoklu seçim kutuları
+        self.test_start_edit = MultiSelectComboBox()
+        test_start_val = str(self.record[20]) if len(self.record) > 20 and self.record[20] else ""
+        self.test_start_edit.add_labs(get_labs(), test_start_val)
+        
+        self.test_result_edit = MultiSelectComboBox()
+        test_result_val = str(self.record[21]) if len(self.record) > 21 and self.record[21] else ""
+        self.test_result_edit.add_labs(get_labs(), test_result_val)
+
         for i, (text, idx) in enumerate(steps):
             is_checked = False
             if idx < len(self.record):
@@ -1434,7 +1601,21 @@ class EditDialog(QDialog):
             
             # Fill columns vertically (2 columns total, 4 rows)
             # row: i % 4, column: i // 4
-            steps_grid.addWidget(cb, i % 4, i // 4)
+            row = i % 4
+            col = i // 4
+            
+            if text == "Testler Başladı":
+                h_layout = QHBoxLayout()
+                h_layout.addWidget(cb)
+                h_layout.addWidget(self.test_start_edit)
+                steps_grid.addLayout(h_layout, row, col)
+            elif text == "Test Sonuçları Geldi":
+                h_layout = QHBoxLayout()
+                h_layout.addWidget(cb)
+                h_layout.addWidget(self.test_result_edit)
+                steps_grid.addLayout(h_layout, row, col)
+            else:
+                steps_grid.addWidget(cb, row, col)
             
         layout.addLayout(steps_grid)
 
@@ -1452,7 +1633,8 @@ class EditDialog(QDialog):
         info_row.addWidget(self.last_upd_label)
         layout.addLayout(info_row)
 
-        self.aciklama_edit = QLineEdit()
+        self.aciklama_edit = QTextEdit()
+        self.aciklama_edit.setFixedHeight(70) # En az 3 satır görünecek yükseklik
         # idx 14 is Aciklama
         raw_desc = str(self.record[14]) if len(self.record) > 14 and self.record[14] else ""
         # Temizleme: Eski sistemden kalan audit log varsa temizle (isteğe bağlı)
@@ -1463,7 +1645,7 @@ class EditDialog(QDialog):
              if raw_desc.startswith("Kayıt: "):
                  raw_desc = ""
 
-        self.aciklama_edit.setText(raw_desc)
+        self.aciklama_edit.setPlainText(raw_desc)
         layout.addWidget(self.aciklama_edit)
         
         # --- Butonlar ---
@@ -1527,46 +1709,45 @@ class EditDialog(QDialog):
                 update_record(self.rowid, db_col, new_val)
 
             # Temel bilgiler güncellemeleri
-            new_ihale = self.ihale_edit.text()
-            if new_ihale != str(self.record[3]):
-                changes.append(f"İhale Adı: {new_ihale}")
-            update_record(self.rowid, "Ihale Adi", new_ihale)
+            if not self.simplified:
+                new_ihale = self.ihale_edit.text()
+                if new_ihale != str(self.record[3]):
+                    changes.append(f"İhale Adı: {new_ihale}")
+                update_record(self.rowid, "Ihale Adi", new_ihale)
 
-            new_firma = self.firma_edit.text()
-            if new_firma != str(self.record[2]):
-                changes.append(f"Firma: {new_firma}")
-            update_record(self.rowid, "Yuklenici Firma", new_firma)
+                new_firma = self.firma_edit.text()
+                if new_firma != str(self.record[2]):
+                    changes.append(f"Firma: {new_firma}")
+                update_record(self.rowid, "Yuklenici Firma", new_firma)
 
-            new_parti = int(self.parti_no_edit.text() or "1")
-            if new_parti != int(self.record[4]):
-                changes.append(f"Parti No: {new_parti}")
-            update_record(self.rowid, "Parti No", new_parti)
-            
-            new_miktar = self.miktar_edit.text()
-            old_miktar = str(self.record[16]) if len(self.record) > 16 and self.record[16] else ""
-            if new_miktar != old_miktar:
-                changes.append(f"Miktar: {new_miktar}")
-            update_record(self.rowid, "Parti Miktari", new_miktar)
+                new_parti = int(self.parti_no_edit.text() or "1")
+                if new_parti != int(self.record[4]):
+                    changes.append(f"Parti No: {new_parti}")
+                update_record(self.rowid, "Parti No", new_parti)
+                
+                new_miktar = self.miktar_edit.text()
+                old_miktar = str(self.record[16]) if len(self.record) > 16 and self.record[16] else ""
+                if new_miktar != old_miktar:
+                    changes.append(f"Miktar: {new_miktar}")
+                update_record(self.rowid, "Parti Miktari", new_miktar)
 
-            # Malzeme Detayı güncelleme
-            new_malzeme = self.malzeme_detayi_edit.toPlainText()
-            old_malzeme = str(self.record[18]) if len(self.record) > 18 and self.record[18] else ""
-            if new_malzeme != old_malzeme:
-                changes.append(f"Malzeme Detayı güncellendi")
-            update_record(self.rowid, "Malzeme Detayi", new_malzeme)
+                new_malzeme = self.malzeme_detayi_edit.toPlainText()
+                old_malzeme = str(self.record[18]) if len(self.record) > 18 and self.record[18] else ""
+                if new_malzeme != old_malzeme:
+                    changes.append(f"Malzeme Detayı güncellendi")
+                update_record(self.rowid, "Malzeme Detayi", new_malzeme)
 
-            new_tutar = parse_money(self.tutar_edit.text())
-            if abs(new_tutar - float(self.record[6] or 0)) > 0.01:
-                changes.append(f"Tutar: {format_money(new_tutar)} TL")
-            update_record(self.rowid, "Parti Tutari", new_tutar)
-            
-            new_tarih = self.tarih_edit.date().toString("yyyy-MM-dd")
-            if new_tarih != str(self.record[5]):
-                changes.append(f"Tarih: {format_date_tr(new_tarih)}")
-            update_record(self.rowid, "Parti Son Teslim Tarihi", new_tarih)
-
+                new_tutar = parse_money(self.tutar_edit.text())
+                if abs(new_tutar - float(self.record[6] or 0)) > 0.01:
+                    changes.append(f"Tutar: {format_money(new_tutar)} TL")
+                update_record(self.rowid, "Parti Tutari", new_tutar)
+                
+                new_tarih = self.tarih_edit.date().toString("yyyy-MM-dd")
+                if new_tarih != str(self.record[5]):
+                    changes.append(f"Teslim Tarihi: {format_date_tr(new_tarih)}")
+                update_record(self.rowid, "Parti Son Teslim Tarihi", new_tarih)
             # Açıklama ve Audit Log
-            new_desc = self.aciklama_edit.text()
+            new_desc = self.aciklama_edit.toPlainText()
             old_desc = str(self.record[14]) if len(self.record) > 14 else ""
             if new_desc != old_desc:
                 changes.append(f"Açıklama: {new_desc}")
@@ -1576,6 +1757,17 @@ class EditDialog(QDialog):
             
             update_record(self.rowid, "Aciklama", new_desc)
             update_record(self.rowid, "SonGuncelleme", audit_log)
+            
+            # Test Detayları Kaydet
+            new_test_start = self.test_start_edit.get_checked_items()
+            if new_test_start != (str(self.record[20]) if len(self.record) > 20 else ""):
+                changes.append(f"Testler Başladı Detay: {new_test_start}")
+            update_record(self.rowid, "Testler Basladi Detay", new_test_start)
+            
+            new_test_result = self.test_result_edit.get_checked_items()
+            if new_test_result != (str(self.record[21]) if len(self.record) > 21 else ""):
+                changes.append(f"Test Sonuçları Geldi Detay: {new_test_result}")
+            update_record(self.rowid, "Test Sonuclari Geldi Detay", new_test_result)
             
             # Detailed Logging
             ikn = self.record[1]
@@ -1670,6 +1862,15 @@ class BulkEditDialog(QDialog):
         self.cb_update_miktar.toggled.connect(self.miktar_edit.setEnabled)
         form_layout.addWidget(self.cb_update_miktar, 4, 0)
         form_layout.addWidget(self.miktar_edit, 4, 1)
+
+        self.cb_update_malzeme = QCheckBox("Malzeme Detayını Güncelle:")
+        self.malzeme_edit = QTextEdit()
+        self.malzeme_edit.setFixedHeight(60)
+        self.malzeme_edit.setEnabled(False)
+        self.malzeme_edit.setPlaceholderText("Tüm seçili kayıtlara uygulanacak malzeme detayını yazınız...")
+        self.cb_update_malzeme.toggled.connect(self.malzeme_edit.setEnabled)
+        form_layout.addWidget(self.cb_update_malzeme, 5, 0)
+        form_layout.addWidget(self.malzeme_edit, 5, 1)
         
         self.cb_update_tutar = QCheckBox("Tutarı Güncelle:")
         self.tutar_edit = QLineEdit()
@@ -1677,15 +1878,31 @@ class BulkEditDialog(QDialog):
         self.tutar_edit.setValidator(QRegularExpressionValidator(QRegularExpression(r"[0-9\.,]*")))
         self.tutar_edit.textEdited.connect(lambda text: self.format_on_type(self.tutar_edit, text))
         self.cb_update_tutar.toggled.connect(self.tutar_edit.setEnabled)
-        form_layout.addWidget(self.cb_update_tutar, 5, 0)
-        form_layout.addWidget(self.tutar_edit, 5, 1)
+        form_layout.addWidget(self.cb_update_tutar, 6, 0)
+        form_layout.addWidget(self.tutar_edit, 6, 1)
 
         self.cb_update_aciklama = QCheckBox("Açıklamayı Güncelle:")
         self.aciklama_edit = QLineEdit()
         self.aciklama_edit.setEnabled(False)
         self.cb_update_aciklama.toggled.connect(self.aciklama_edit.setEnabled)
-        form_layout.addWidget(self.cb_update_aciklama, 6, 0)
-        form_layout.addWidget(self.aciklama_edit, 6, 1)
+        form_layout.addWidget(self.cb_update_aciklama, 7, 0)
+        form_layout.addWidget(self.aciklama_edit, 7, 1)
+
+        self.cb_update_test_start = QCheckBox("Testler Başladı Detayı:")
+        self.test_start_bulk_edit = MultiSelectComboBox()
+        self.test_start_bulk_edit.add_labs(get_labs())
+        self.test_start_bulk_edit.setEnabled(False)
+        self.cb_update_test_start.toggled.connect(self.test_start_bulk_edit.setEnabled)
+        form_layout.addWidget(self.cb_update_test_start, 8, 0)
+        form_layout.addWidget(self.test_start_bulk_edit, 8, 1)
+
+        self.cb_update_test_result = QCheckBox("Test Sonuçları Geldi Detayı:")
+        self.test_result_bulk_edit = MultiSelectComboBox()
+        self.test_result_bulk_edit.add_labs(get_labs())
+        self.test_result_bulk_edit.setEnabled(False)
+        self.cb_update_test_result.toggled.connect(self.test_result_bulk_edit.setEnabled)
+        form_layout.addWidget(self.cb_update_test_result, 9, 0)
+        form_layout.addWidget(self.test_result_bulk_edit, 9, 1)
         
         layout.addLayout(form_layout)
 
@@ -1797,6 +2014,10 @@ class BulkEditDialog(QDialog):
             new_miktar = self.miktar_edit.text() if do_miktar else None
             if do_miktar: changes_summary.append("Miktar")
             
+            do_malzeme = self.cb_update_malzeme.isChecked()
+            new_malzeme = self.malzeme_edit.toPlainText() if do_malzeme else None
+            if do_malzeme: changes_summary.append("Malzeme Detayı")
+            
             do_tutar = self.cb_update_tutar.isChecked()
             new_tutar = parse_money(self.tutar_edit.text()) if do_tutar else None
             if do_tutar: changes_summary.append("Tutar")
@@ -1804,6 +2025,14 @@ class BulkEditDialog(QDialog):
             do_aciklama = self.cb_update_aciklama.isChecked()
             new_aciklama = self.aciklama_edit.text() if do_aciklama else None
             if do_aciklama: changes_summary.append("Açıklama")
+            
+            do_test_start = self.cb_update_test_start.isChecked()
+            new_test_start = self.test_start_bulk_edit.get_checked_items() if do_test_start else None
+            if do_test_start: changes_summary.append("Testler Başladı Detay")
+
+            do_test_result = self.cb_update_test_result.isChecked()
+            new_test_result = self.test_result_bulk_edit.get_checked_items() if do_test_result else None
+            if do_test_result: changes_summary.append("Test Sonuçları Geldi Detay")
             
             status_updates = {}
             for text, cb in self.status_checks.items():
@@ -1847,8 +2076,11 @@ class BulkEditDialog(QDialog):
                     update_record(rowid, "Sozlesme Tarihi", new_sozlesme_str)
 
                 if do_miktar: update_record(rowid, "Parti Miktari", new_miktar)
+                if do_malzeme: update_record(rowid, "Malzeme Detayi", new_malzeme)
                 if do_tutar: update_record(rowid, "Parti Tutari", new_tutar)
                 if do_aciklama: update_record(rowid, "Aciklama", new_aciklama)
+                if do_test_start: update_record(rowid, "Testler Basladi Detay", new_test_start)
+                if do_test_result: update_record(rowid, "Test Sonuclari Geldi Detay", new_test_result)
                 
                 for state_text, state_val in status_updates.items():
                     db_col = COLUMN_MAPPING.get(state_text, state_text)
@@ -1873,6 +2105,23 @@ class BulkEditDialog(QDialog):
 
 # --- DETAY
 # --- ÖZET SAYFASI ---
+class ClickableCard(QFrame):
+    def __init__(self, record, parent_summary, mode='full'):
+        super().__init__()
+        self.record = record
+        self.parent_summary = parent_summary
+        self.mode = mode
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Tam düzenleme için çift tıklayın 🛠️" if mode == 'full' else "Hızlı durum güncelleme için çift tıklayın ⚡")
+        self.setStyleSheet("background: transparent; border: none;")
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self.mode == 'full':
+                self.parent_summary.open_edit(self.record)
+            else:
+                self.parent_summary.open_edit(self.record, simplified=True)
+
 class SummaryWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2044,9 +2293,9 @@ class SummaryWidget(QWidget):
         text_color = "#f8fafc" if is_dark else "#1e293b"
         sub_text_color = "#94a3b8" if is_dark else "#64748b"
         
-        card = QFrame()
-        card.setObjectName("Card")
-        card.setStyleSheet(f"""
+        main_card = QFrame()
+        main_card.setObjectName("Card")
+        main_card.setStyleSheet(f"""
             #Card {{
                 background-color: {bg_color}; 
                 border: 2px solid {border_color}; 
@@ -2058,17 +2307,22 @@ class SummaryWidget(QWidget):
             }}
         """)
         
-        # Shadow effect
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(15)
         shadow.setXOffset(0)
         shadow.setYOffset(4)
         shadow.setColor(QColor(0, 0, 0, 40 if is_dark else 20))
-        card.setGraphicsEffect(shadow)
+        main_card.setGraphicsEffect(shadow)
 
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(10)
+        main_layout = QVBoxLayout(main_card)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # --- ÜST KISIM (Tam Düzenleme) ---
+        top_widget = ClickableCard(record, self, mode='full')
+        top_layout = QVBoxLayout(top_widget)
+        top_layout.setContentsMargins(15, 15, 15, 5)
+        top_layout.setSpacing(10)
 
         h_head = QHBoxLayout()
         ikn_lbl = QLabel(f" IKN: {record[1]} ")
@@ -2077,41 +2331,29 @@ class SummaryWidget(QWidget):
         ikn_lbl.setStyleSheet(f"font-weight: bold; color: {('#818cf8' if is_dark else '#6366f1')}; font-size: 16px; {ikn_style}")
         h_head.addWidget(ikn_lbl)
         
+        # Sözleşme Tarihi bilgisini ekle
+        sozlesme_raw = str(record[17])[:10] if len(record) > 17 and record[17] else "-"
+        soz_tarih_tr = format_date_tr(sozlesme_raw) if sozlesme_raw != "-" else "-"
+        sozlesme_lbl = QLabel(f" 📝 Sözl. Tarihi: {soz_tarih_tr} ")
+        sozlesme_lbl.setStyleSheet(f"font-weight: bold; color: {sub_text_color}; font-size: 13px; {ikn_style}")
+        h_head.addSpacing(5)
+        h_head.addWidget(sozlesme_lbl)
+        
         if date_color:
             status_tag = QLabel("⚠️ KABUL İŞLEMİ TAMAMLANMADI" if date_color == "#ef4444" else "⏳ TESLİM SÜRESİ YAKLAŞIYOR")
             status_tag.setStyleSheet(f"color: white; background-color: {date_color}; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;")
             h_head.addWidget(status_tag)
             
         h_head.addStretch()
-        
-        btn = QPushButton("✏️ Düzenle")
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        # Indigo colors consistent with 'Temizle' button
-        btn.setStyleSheet("""
-            QPushButton { 
-                padding: 4px 12px; 
-                font-size: 12px; 
-                background-color: #6366f1; 
-                border: none;
-                border-radius: 4px;
-            }
-            QPushButton:hover { 
-                background-color: #4f46e5; 
-            }
-        """)
-        btn.clicked.connect(lambda: self.open_edit(record))
-        h_head.addWidget(btn)
-        
-        layout.addLayout(h_head)
+        top_layout.addLayout(h_head)
 
         title_lbl = QLabel(str(record[3]))
         title_lbl.setWordWrap(True)
         title_bg_color = "#1e293b" if is_dark else "#f8fafc"
         title_style = f"background-color: {title_bg_color}; border-radius: 6px; padding: 5px;"
         title_lbl.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {text_color}; {title_style}")
-        layout.addWidget(title_lbl)
+        top_layout.addWidget(title_lbl)
         
-        # Info Row
         info_layout = QHBoxLayout()
         firma_lbl = QLabel(f"🏢 {record[2]}")
         miktar_val = str(record[16]) if len(record) > 16 and record[16] else "-"
@@ -2130,14 +2372,19 @@ class SummaryWidget(QWidget):
                 info_layout.addSpacing(10)
         
         info_layout.addStretch()
-        layout.addLayout(info_layout)
-        
-        # Status Box
+        top_layout.addLayout(info_layout)
+        main_layout.addWidget(top_widget)
+
+        # --- ALT KISIM (Hızlı Durum Güncelleme) ---
+        bottom_widget = ClickableCard(record, self, mode='quick')
+        bottom_layout = QVBoxLayout(bottom_widget)
+        bottom_layout.setContentsMargins(15, 5, 15, 15)
+        bottom_layout.setSpacing(5)
+
         status_box = QFrame()
         status_box.setStyleSheet(f"background-color: {('#1e293b' if is_dark else 'white')}; border-radius: 8px; padding: 10px;")
         status_layout = QVBoxLayout(status_box)
         
-        # Horizontal layout for labels to fit side-by-side
         row_steps = QHBoxLayout()
         row_steps.setSpacing(15)
         
@@ -2147,13 +2394,21 @@ class SummaryWidget(QWidget):
         
         for text, idx in steps:
             is_checked = (idx < len(record) and record[idx] == 1.0)
+            
+            # Detay bilgisini ekle
+            display_text = text
+            if text == "Testler Başladı":
+                # Index 20
+                detay = str(record[20]) if len(record) > 20 and record[20] else ""
+                if detay: display_text += f" ({detay})"
+            elif text == "Test Sonuçları Geldi":
+                # Index 21
+                detay = str(record[21]) if len(record) > 21 and record[21] else ""
+                if detay: display_text += f" ({detay})"
+
             dot = "●"
-            lbl = QLabel(f"{dot} {text}")
-            if is_checked:
-                color = "#4ade80" if is_dark else "#16a34a"  # Canlı Yeşil (Karanlıkta açık, Aydınlıkta koyu)
-            else:
-                # Aydınlık modda daha koyu gri (#64748b), karanlık modda orta gri (#94a3b8)
-                color = "#94a3b8" if is_dark else "#64748b" 
+            lbl = QLabel(f"{dot} {display_text}")
+            color = ("#4ade80" if is_dark else "#16a34a") if is_checked else ("#94a3b8" if is_dark else "#64748b")
             lbl.setStyleSheet(f"font-size: 12px; font-weight: bold; color: {color};")
             row_steps.addWidget(lbl)
         
@@ -2163,26 +2418,26 @@ class SummaryWidget(QWidget):
         desc = record[14] if len(record) > 14 and record[14] else ""
         if desc:
             d_lbl = QLabel(f"📝 {desc}")
-            # Dynamic styling for better readability in dark mode
             d_color = "#94a3b8" if is_dark else "#475569"
             d_border = "#334155" if is_dark else "#e2e8f0"
             d_lbl.setStyleSheet(f"color: {d_color}; font-size: 14px; border-top: 1px solid {d_border}; margin-top: 5px; padding-top: 5px;")
             status_layout.addWidget(d_lbl)
-            
-        # Son Güncelleme (Audit Info) displayed at the bottom of the card
+        
+        bottom_layout.addWidget(status_box)
+
         last_upd_val = str(record[15]) if len(record) > 15 and record[15] else ""
         if last_upd_val:
             upd_lbl = QLabel(f"ℹ️ {last_upd_val}")
             upd_color = "#94a3b8" if is_dark else "#64748b"
             upd_lbl.setStyleSheet(f"color: {upd_color}; font-size: 11px; margin-top: 2px;")
             upd_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
-            layout.addWidget(upd_lbl)
+            bottom_layout.addWidget(upd_lbl)
 
-        layout.addWidget(status_box)
-        return card
+        main_layout.addWidget(bottom_widget)
+        return main_card
 
-    def open_edit(self, record):
-        if EditDialog(record, self).exec():
+    def open_edit(self, record, simplified=False):
+        if EditDialog(record, self, simplified=simplified).exec():
             self.refresh_summary()
             if self.parent_window: self.parent_window.refresh_all()
 
@@ -2213,6 +2468,13 @@ class TenderWidget(QWidget):
             """)
             btn_layout.addWidget(btn)
         
+        btn_layout.addSpacing(10)
+        self.btn_export = QPushButton("📊 Verileri CSV Olarak Dışa Aktar")
+        self.btn_export.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_export.setObjectName("InfoBtn")
+        self.btn_export.clicked.connect(self.export_to_csv)
+        btn_layout.addWidget(self.btn_export)
+
         btn_layout.addStretch()
         
         self.total_label = QLabel("<b>GENEL TOPLAM: 0,00 TL</b>")
@@ -2251,8 +2513,8 @@ class TenderWidget(QWidget):
         
         self.tender_table = QTableWidget()
         self.tender_table.setAlternatingRowColors(True)
-        self.tender_table.setColumnCount(6)
-        self.tender_table.setHorizontalHeaderLabels(["IKN", "Firma", "İhale Adı", "Toplam Tutar", "Toplam Parti", "Kalan Parti"])
+        self.tender_table.setColumnCount(9)
+        self.tender_table.setHorizontalHeaderLabels(["IKN", "Firma", "İhale Adı", "Sözleşme Tarihi", "İş Sonu", "İşin Süresi", "Toplam Tutar", "Toplam Parti", "Kalan Parti"])
         self.tender_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.tender_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.tender_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -2261,6 +2523,8 @@ class TenderWidget(QWidget):
         header = self.tender_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch) # Stretch 'Ihale Adi'
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed) # İşin Süresi
+        self.tender_table.setColumnWidth(5, 100)
         
         top_layout.addWidget(self.tender_table)
         splitter.addWidget(top_widget)
@@ -2307,6 +2571,46 @@ class TenderWidget(QWidget):
         self.btn_active.setChecked(mode == "active")
         self.btn_completed.setChecked(mode == "completed")
         self.refresh_data()
+
+    def export_to_csv(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Verileri CSV Olarak Kaydet", "", "CSV Dosyası (*.csv)")
+        if not path:
+            return
+            
+        try:
+            with open(path, mode='w', encoding='utf-8-sig', newline='') as file:
+                writer = csv.writer(file, delimiter=';')
+                
+                # --- SECTION 1: İHALE LİSTESİ ---
+                writer.writerow(["İHALE LİSTESİ"])
+                headers = [self.tender_table.horizontalHeaderItem(i).text() for i in range(self.tender_table.columnCount())]
+                writer.writerow(headers)
+                
+                for row in range(self.tender_table.rowCount()):
+                    row_data = [self.tender_table.item(row, col).text() if self.tender_table.item(row, col) else "" 
+                                for col in range(self.tender_table.columnCount())]
+                    writer.writerow(row_data)
+                
+                # --- SECTION 2: SEÇİLİ İHALE DETAYLARI ---
+                row = self.tender_table.currentRow()
+                if row >= 0:
+                    writer.writerow([]) # Boş satır
+                    writer.writerow(["SEÇİLİ İHALE DETAYLARI"])
+                    tender_name = self.tender_table.item(row, 2).text()
+                    writer.writerow([f"İhale: {tender_name}"])
+                    
+                    part_headers = [self.part_table.horizontalHeaderItem(i).text() for i in range(self.part_table.columnCount())]
+                    writer.writerow(part_headers)
+                    
+                    for r in range(self.part_table.rowCount()):
+                        r_data = [self.part_table.item(r, c).text() if self.part_table.item(r, c) else "" 
+                                  for c in range(self.part_table.columnCount())]
+                        writer.writerow(r_data)
+            
+            QMessageBox.information(self, "Başarılı", f"Veriler başarıyla dışa aktarıldı:\n{path}")
+            log_action("CSV Dışa Aktar (İhale Detayları)", f"Dosya: {path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"CSV dışa aktarma hatası:\n{e}")
 
     def refresh_data(self):
         self.tender_table.blockSignals(True)
@@ -2377,20 +2681,54 @@ class TenderWidget(QWidget):
             # Column 2: Ihale Adi - Sortable
             self.tender_table.setItem(i, 2, QTableWidgetItem(str(item["ihale"])))
             
-            # Column 3: Toplam Tutar - Sortable Numeric
+            # Column 3: Sözleşme Tarihi
+            parts = item["parts"]
+            sozlesme_raw = parts[0][17] if len(parts[0]) > 17 else ""
+            sozlesme_item = SortableTableWidgetItem(format_date_tr(sozlesme_raw))
+            sozlesme_item.setData(Qt.ItemDataRole.UserRole, sozlesme_raw if sozlesme_raw else "0000-00-00")
+            sozlesme_item.setTextAlignment(Qt.AlignCenter)
+            self.tender_table.setItem(i, 3, sozlesme_item)
+
+            # Column 4: İş Sonu (Son Parti Teslim Tarihi)
+            delivery_dates = [p[5] for p in parts if p[5]]
+            is_sonu_raw = max(delivery_dates) if delivery_dates else ""
+            is_sonu_item = SortableTableWidgetItem(format_date_tr(is_sonu_raw))
+            is_sonu_item.setData(Qt.ItemDataRole.UserRole, is_sonu_raw if is_sonu_raw else "0000-00-00")
+            is_sonu_item.setTextAlignment(Qt.AlignCenter)
+            self.tender_table.setItem(i, 4, is_sonu_item)
+
+            # Column 5: İşin Süresi (Days between Sozlesme and Is Sonu)
+            isin_suresi_text = "-"
+            isin_suresi_days = -1
+            if sozlesme_raw and is_sonu_raw:
+                try:
+                    d1 = datetime.strptime(str(sozlesme_raw)[:10], "%Y-%m-%d")
+                    d2 = datetime.strptime(str(is_sonu_raw)[:10], "%Y-%m-%d")
+                    diff = (d2 - d1).days
+                    isin_suresi_days = diff
+                    isin_suresi_text = f"{diff} Gün"
+                except:
+                    pass
+            
+            suresi_item = SortableTableWidgetItem(isin_suresi_text)
+            suresi_item.setData(Qt.ItemDataRole.UserRole, isin_suresi_days)
+            suresi_item.setTextAlignment(Qt.AlignCenter)
+            self.tender_table.setItem(i, 5, suresi_item)
+
+            # Column 6: Toplam Tutar - Sortable Numeric
             tutar_item = SortableTableWidgetItem(format_money(item["total_amount"]) + " TL")
             tutar_item.setData(Qt.ItemDataRole.UserRole, item["total_amount"])
             tutar_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self.tender_table.setItem(i, 3, tutar_item)
+            self.tender_table.setItem(i, 6, tutar_item)
             
-            # Column 4: Toplam Parti Sayisi - Sortable Numeric
+            # Column 7: Toplam Parti Sayisi - Sortable Numeric
             part_count = len(item["parts"])
             p_item = SortableTableWidgetItem(str(part_count))
             p_item.setData(Qt.ItemDataRole.UserRole, part_count)
             p_item.setTextAlignment(Qt.AlignCenter)
-            self.tender_table.setItem(i, 4, p_item)
+            self.tender_table.setItem(i, 7, p_item)
 
-            # Column 5: Kalan Parti Sayisi - Sortable Numeric
+            # Column 8: Kalan Parti Sayisi - Sortable Numeric
             t_completed = 0
             for p in item["parts"]:
                 # part[13] is 'Odeme Emri Hazirlandi'
@@ -2402,15 +2740,14 @@ class TenderWidget(QWidget):
             rem_item.setData(Qt.ItemDataRole.UserRole, remaining)
             rem_item.setTextAlignment(Qt.AlignCenter)
             
-            # Highlight if remaining > 0 (optional visual cue)
             if remaining > 0:
-                rem_item.setForeground(QColor("#ef4444")) # Red text for pending
+                rem_item.setForeground(QColor("#ef4444")) 
                 rem_item.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
             else:
                  is_dark = self.parent_window.is_dark_mode if self.parent_window else False
-                 rem_item.setForeground(QColor("#4ade80" if is_dark else "#16a34a")) # Green for all done
+                 rem_item.setForeground(QColor("#4ade80" if is_dark else "#16a34a")) 
 
-            self.tender_table.setItem(i, 5, rem_item)
+            self.tender_table.setItem(i, 8, rem_item)
             
         self.tender_table.setSortingEnabled(True)
         self.tender_table.blockSignals(False)
@@ -2515,6 +2852,13 @@ class FirmSummaryWidget(QWidget):
         self.btn_clear.clicked.connect(self.clear_filters)
         filter_layout.addWidget(self.btn_clear)
         
+        filter_layout.addSpacing(10)
+        self.btn_export = QPushButton("📊 Verileri CSV Olarak Dışa Aktar")
+        self.btn_export.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_export.setObjectName("InfoBtn")
+        self.btn_export.clicked.connect(self.export_to_csv)
+        filter_layout.addWidget(self.btn_export)
+
         filter_layout.addStretch()
         
         self.total_label = QLabel("<b>GENEL TOPLAM: 0,00 TL</b>")
@@ -2542,6 +2886,28 @@ class FirmSummaryWidget(QWidget):
         
         layout.addWidget(self.table)
         self.refresh_data()
+
+    def export_to_csv(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Verileri CSV Olarak Kaydet", "", "CSV Dosyası (*.csv)")
+        if not path:
+            return
+            
+        try:
+            headers = [self.table.horizontalHeaderItem(i).text() for i in range(self.table.columnCount())]
+            
+            with open(path, mode='w', encoding='utf-8-sig', newline='') as file:
+                writer = csv.writer(file, delimiter=';')
+                writer.writerow(headers)
+                
+                for row in range(self.table.rowCount()):
+                    row_data = [self.table.item(row, col).text() if self.table.item(row, col) else "" 
+                                for col in range(self.table.columnCount())]
+                    writer.writerow(row_data)
+            
+            QMessageBox.information(self, "Başarılı", f"Veriler başarıyla dışa aktarıldı:\n{path}")
+            log_action("CSV Dışa Aktar (Firma Özetleri)", f"Dosya: {path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"CSV dışa aktarma hatası:\n{e}")
 
     def refresh_data(self):
         # Yıl listesini güncelle (sadece ilk kez veya veri değiştiğinde)
@@ -3006,13 +3372,6 @@ class DetailWidget(QWidget):
         btn_backup.clicked.connect(self.backup_now)
         top_btn_layout.addWidget(btn_backup)
 
-        btn_col_settings = QPushButton("⚙️ Sütun Ayarları")
-        btn_col_settings.setObjectName("PrimaryBtn")
-        btn_col_settings.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_col_settings.clicked.connect(self.show_column_settings)
-        top_btn_layout.addWidget(btn_col_settings)
-
-        # Spacer between Actions and Filters
         top_btn_layout.addSpacing(40)
 
         # Durum Filtre Butonları
@@ -3332,12 +3691,6 @@ class DetailWidget(QWidget):
             btn_edit.clicked.connect(lambda ch, rec=r: self.open_edit(rec))
             action_layout.addWidget(btn_edit)
 
-            if CURRENT_USER_ROLE == "admin":
-                btn_delete = QPushButton("Sil")
-                btn_delete.setStyleSheet("background-color: #d32f2f; color: white; border-radius: 4px; padding: 4px;")
-                btn_delete.clicked.connect(lambda ch, rec=r: self.delete_row(rec))
-                action_layout.addWidget(btn_delete)
-
             action_layout.addStretch()
             self.table.setCellWidget(row_idx, 17, action_widget)
             
@@ -3364,48 +3717,6 @@ class DetailWidget(QWidget):
                 f"İşlem başarılı!\nYedek dosyası oluşturuldu:\n{backup_file}")
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Yedekleme sırasında hata oluştu:\n{e}")
-
-    # --------------------------------------------------------
-    # SUTUN AYARLARI
-    # --------------------------------------------------------
-    def show_column_settings(self):
-        """Sütun görünürlüğü seçim diyaloğu."""
-        dlg = QDialog(self)
-        dlg.setWindowTitle("⚙️ Sütun Ayarları")
-        dlg.setFixedWidth(300)
-        layout = QVBoxLayout(dlg)
-        layout.addWidget(QLabel("<b>Gösterilecek Sütunları Seçin:</b>"))
-
-        # Son sütun (İşlem) her zaman görünür; ona checkbox vermiyoruz
-        checkboxes = []
-        for col in range(self.table.columnCount() - 1):
-            header_item = self.table.horizontalHeaderItem(col)
-            label = header_item.text() if header_item else f"Sütun {col}"
-            cb = QCheckBox(label)
-            cb.setChecked(not self.table.isColumnHidden(col))
-            layout.addWidget(cb)
-            checkboxes.append((col, cb))
-
-        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        btns.button(QDialogButtonBox.StandardButton.Ok).setText("Uygula")
-        btns.button(QDialogButtonBox.StandardButton.Cancel).setText("İptal")
-        btns.accepted.connect(dlg.accept)
-        btns.rejected.connect(dlg.reject)
-        layout.addWidget(btns)
-
-        if dlg.exec():
-            for col, cb in checkboxes:
-                self.table.setColumnHidden(col, not cb.isChecked())
-            self.save_column_settings()
-
-    def save_column_settings(self):
-        """Sütun görünürlüğünü kullanıcıya özel olarak kaydeder."""
-        settings = QSettings("IhaleSystem", f"UserPrefs/{CURRENT_USER}")
-        hidden = []
-        for col in range(self.table.columnCount()):
-            if self.table.isColumnHidden(col):
-                hidden.append(col)
-        settings.setValue("detail_hidden_cols", hidden)
 
     def load_column_settings(self):
         """Kaydedilmiş sütun görünürlüğünü yükler."""
@@ -3783,7 +4094,169 @@ class LogWidget(QWidget):
         self.cb_user.setCurrentIndex(0)
         self.cb_action.setCurrentIndex(0)
 
-# --- ABOUT DIALOG ---
+# --- SETTINGS DIALOG ---
+class SettingsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("⚙️ Ayarlar")
+        self.setFixedWidth(500)
+        self.parent_window = parent
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        tabs = QTabWidget()
+        
+        # Tab 1: Sütun Ayarları (DetailWidget'tan taşındı)
+        col_tab = QWidget()
+        col_layout = QVBoxLayout(col_tab)
+        col_layout.addWidget(QLabel("<b>Düzenleme Tablosu Sütun Görünürlüğü:</b>"))
+        
+        self.col_checkboxes = []
+        detail_widget = self.parent_window.detail_widget
+        column_map = {
+            "Sözl. Tarihi": "Sözleşme Tarihi",
+            "Ambar": "Ambar Teslimi Gerçekleşti",
+            "Bşk. Haber": "Heyet Başkanına Haber Verildi",
+            "Test B.": "Testler Başladı",
+            "Test S.": "Test Sonuçları Geldi",
+            "Rapor": "Kabul Raporu imzada",
+            "Kabul": "Kabul Yapıldı",
+            "Ödeme": "Ödeme Belgesi Oluşturuldu"
+        }
+        
+        scroll = QScrollArea()
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        
+        for col in range(detail_widget.table.columnCount() - 1):
+            header_item = detail_widget.table.horizontalHeaderItem(col)
+            label = header_item.text() if header_item else f"Sütun {col}"
+            display_label = column_map.get(label, label)
+            
+            cb = QCheckBox(display_label)
+            cb.setChecked(not detail_widget.table.isColumnHidden(col))
+            scroll_layout.addWidget(cb)
+            self.col_checkboxes.append((col, cb))
+            
+        scroll.setWidget(scroll_content)
+        scroll.setWidgetResizable(True)
+        col_layout.addWidget(scroll)
+        
+        tabs.addTab(col_tab, "📊 Sütun Ayarları")
+        
+        # Tab 2: Laboratuvar Listesi
+        lab_tab = QWidget()
+        lab_layout = QVBoxLayout(lab_tab)
+        lab_layout.addWidget(QLabel("<b>Laboratuvar Listesi:</b>"))
+        
+        self.lab_list_widget = QtWidgets.QListWidget()
+        self.refresh_lab_list()
+        lab_layout.addWidget(self.lab_list_widget)
+        
+        lab_btn_row = QHBoxLayout()
+        self.lab_input = QLineEdit()
+        self.lab_input.setPlaceholderText("Yeni laboratuvar adı...")
+        btn_add_lab = QPushButton("Ekle")
+        btn_add_lab.setObjectName("SuccessBtn")
+        btn_add_lab.clicked.connect(self.add_lab)
+
+        btn_edit_lab = QPushButton("Düzenle")
+        btn_edit_lab.setObjectName("PrimaryBtn")
+        btn_edit_lab.clicked.connect(self.edit_lab)
+        
+        btn_del_lab = QPushButton("Seçiliyi Sil")
+        btn_del_lab.setObjectName("DangerBtn")
+        btn_del_lab.clicked.connect(self.delete_lab)
+        
+        lab_btn_row.addWidget(self.lab_input)
+        lab_btn_row.addWidget(btn_add_lab)
+        lab_btn_row.addWidget(btn_edit_lab)
+        lab_btn_row.addWidget(btn_del_lab)
+        lab_layout.addLayout(lab_btn_row)
+        
+        tabs.addTab(lab_tab, "🧪 Laboratuvarlar")
+        
+        layout.addWidget(tabs)
+        
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        btns.button(QDialogButtonBox.StandardButton.Save).setText("Kaydet ve Uygula")
+        btns.button(QDialogButtonBox.StandardButton.Cancel).setText("Kapat")
+        btns.accepted.connect(self.save_settings)
+        btns.rejected.connect(self.reject)
+        layout.addWidget(btns)
+
+    def refresh_lab_list(self):
+        self.lab_list_widget.clear()
+        labs = get_labs()
+        for lab in labs:
+            self.lab_list_widget.addItem(lab)
+
+    def add_lab(self):
+        name = self.lab_input.text().strip()
+        if not name: return
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO labs (name) VALUES (?)", (name,))
+            conn.commit()
+            conn.close()
+            self.lab_input.clear()
+            self.refresh_lab_list()
+        except sqlite3.IntegrityError:
+            QMessageBox.warning(self, "Uyarı", "Bu laboratuvar zaten listede mevcut.")
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Hata oluştu: {e}")
+
+    def delete_lab(self):
+        current_item = self.lab_list_widget.currentItem()
+        if not current_item: return
+        name = current_item.text()
+        confirm = QMessageBox.question(self, "Onay", f"'{name}' laboratuvarını silmek istediğinize emin misiniz?",
+                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if confirm != QMessageBox.StandardButton.Yes: return
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM labs WHERE name = ?", (name,))
+            conn.commit()
+            conn.close()
+            self.refresh_lab_list()
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Silme hatası: {e}")
+
+    def edit_lab(self):
+        current_item = self.lab_list_widget.currentItem()
+        if not current_item: 
+            QMessageBox.warning(self, "Uyarı", "Lütfen düzenlemek istediğiniz laboratuvarı seçin.")
+            return
+        old_name = current_item.text()
+        new_name, ok = QtWidgets.QInputDialog.getText(self, "Laboratuvar Düzenle", "Laboratuvar Adı:", QLineEdit.EchoMode.Normal, old_name)
+        if ok and new_name.strip() and new_name.strip() != old_name:
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("UPDATE labs SET name = ? WHERE name = ?", (new_name.strip(), old_name))
+                conn.commit()
+                conn.close()
+                self.refresh_lab_list()
+            except sqlite3.IntegrityError:
+                QMessageBox.warning(self, "Uyarı", "Bu isimde bir laboratuvar zaten mevcut.")
+            except Exception as e:
+                QMessageBox.critical(self, "Hata", f"Düzenleme hatası: {e}")
+
+    def save_settings(self):
+        # Sütun ayarlarını uygula ve kaydet
+        detail_widget = self.parent_window.detail_widget
+        settings = QSettings("IhaleSystem", f"UserPrefs/{CURRENT_USER}")
+        
+        for col_idx, cb in self.col_checkboxes:
+            is_visible = cb.isChecked()
+            detail_widget.table.setColumnHidden(col_idx, not is_visible)
+            settings.setValue(f"column_visible_{col_idx}", is_visible)
+            
+        QMessageBox.information(self, "Başarılı", "Ayarlar kaydedildi ve uygulandı.")
+        self.accept()
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -3797,11 +4270,11 @@ class AboutDialog(QDialog):
         
         # Info Text
         info_text = """
-        <h3 style='color: #6366f1; margin-bottom:0;'>İhale Takip Uygulaması v6.56</h3>
+        <h3 style='color: #6366f1; margin-bottom:0;'>İhale Takip Uygulaması v6.61</h3>
         <br>
         <b>Geliştirici Bilgileri:</b></p>
         <ul>
-        <li>Geliştirici: Mustafa Halil GÖRENTAŞ</li>
+        <li>Vibe Coder: Mustafa Halil GÖRENTAŞ</li>
         <li>Kaynak Kod: <a href="https://github.com/mhalil/ihale_takip_sistemi">github.com/mhalil/ihale_takip_sistemi</a></li>
         </ul>
         <p><b>Teknik Bilgiler:</b></p>
@@ -3858,6 +4331,15 @@ class MainWindow(QMainWindow):
         self.btn_user.clicked.connect(self.show_user_mgmt)
         top_bar.addWidget(self.btn_user)
         
+        top_bar.addSpacing(5)
+
+        self.btn_settings = QPushButton("⚙️ Ayarlar")
+        self.btn_settings.setObjectName("PrimaryBtn")
+        self.btn_settings.setFixedWidth(110)
+        self.btn_settings.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_settings.clicked.connect(self.show_settings)
+        top_bar.addWidget(self.btn_settings)
+
         top_bar.addSpacing(5)
         
         self.btn_logout = QPushButton("🚪 Çıkış Yap")
@@ -3950,6 +4432,9 @@ class MainWindow(QMainWindow):
 
     def show_user_mgmt(self):
         UserManagementDialog(self).exec()
+
+    def show_settings(self):
+        SettingsDialog(self).exec()
 
     def logout(self):
         msg = QMessageBox(self)
