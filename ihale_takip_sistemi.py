@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                 QTabWidget, QScrollArea, QComboBox, QListView,  
                                 QMessageBox, QDateEdit, QGraphicsDropShadowEffect, QGridLayout, 
                                 QSplitter, QCalendarWidget, QStyledItemDelegate, QStyle,
-                                QFileDialog, QTextEdit
+                                QFileDialog, QTextEdit, QCompleter
                                 )
 from PySide6.QtCore import Qt, QDate, QRegularExpression, QSettings, QEvent
 from PySide6.QtGui import (QIntValidator, QRegularExpressionValidator, QFont, 
@@ -1059,6 +1059,23 @@ class NewTenderDialog(QDialog):
         layout.addWidget(QLabel("<b>Yuklenici Firma:</b>"))
         self.fields["Yuklenici Firma"] = QLineEdit()
         self.fields["Yuklenici Firma"].setPlaceholderText("Yüklenici Firma bilgisini giriniz")
+        
+        # --- Auto-complete for Yüklenici Firma ---
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT `Yuklenici Firma` FROM data WHERE `Yuklenici Firma` IS NOT NULL AND `Yuklenici Firma` != ''")
+            firm_names = [row[0] for row in cursor.fetchall() if row[0]]
+            conn.close()
+            
+            if firm_names:
+                completer = QCompleter(firm_names, self)
+                completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+                completer.setFilterMode(Qt.MatchFlag.MatchContains)
+                self.fields["Yuklenici Firma"].setCompleter(completer)
+        except Exception as e:
+            print("Completer error:", e)
+        
         layout.addWidget(self.fields["Yuklenici Firma"])
 
         # Sözleşme Tutarı
@@ -3046,6 +3063,8 @@ class CalendarWidget(QWidget):
         
         # Takvim boyutunu artır
         self.calendar.setMinimumHeight(450)
+        self.calendar.setMinimumWidth(550)
+        self.calendar.setMaximumWidth(650)
         
         # Takvim stilini modernleştir
         # Ay/Yıl butonlarını beyaz yapmak için: QToolButton renkleri
@@ -3117,7 +3136,7 @@ class CalendarWidget(QWidget):
         # Sayfa (Ay) değiştiğinde özeti güncelle
         self.calendar.currentPageChanged.connect(self.update_monthly_summary)
         
-        layout.addLayout(left_panel, stretch=1)
+        layout.addLayout(left_panel, stretch=0)
         
         # Sağ Panel: Günlük Detaylar
         right_panel = QVBoxLayout()
@@ -3136,7 +3155,7 @@ class CalendarWidget(QWidget):
         self.scroll.setWidget(self.card_container)
         right_panel.addWidget(self.scroll)
         
-        layout.addLayout(right_panel, stretch=2)
+        layout.addLayout(right_panel, stretch=1)
 
     def go_to_today(self):
         self.calendar.setSelectedDate(QDate.currentDate())
@@ -4270,7 +4289,7 @@ class AboutDialog(QDialog):
         
         # Info Text
         info_text = """
-        <h3 style='color: #6366f1; margin-bottom:0;'>İhale Takip Uygulaması v6.61</h3>
+        <h3 style='color: #6366f1; margin-bottom:0;'>İhale Takip Uygulaması v6.63</h3>
         <br>
         <b>Geliştirici Bilgileri:</b></p>
         <ul>
