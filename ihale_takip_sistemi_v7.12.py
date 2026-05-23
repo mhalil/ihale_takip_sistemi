@@ -6,17 +6,17 @@ import csv
 from datetime import datetime, timedelta
 
 from PySide6 import QtWidgets
-from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
-                                QHBoxLayout, QTableWidget, QTableWidgetItem,
-                                QPushButton, QLineEdit, QLabel, QDialog,
+from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+                                QHBoxLayout, QTableWidget, QTableWidgetItem, 
+                                QPushButton, QLineEdit, QLabel, QDialog, 
                                 QCheckBox, QDialogButtonBox, QHeaderView, QFrame,
-                                QTabWidget, QScrollArea, QComboBox, QListView,
-                                QMessageBox, QDateEdit, QGraphicsDropShadowEffect, QGridLayout,
+                                QTabWidget, QScrollArea, QComboBox, QListView,  
+                                QMessageBox, QDateEdit, QGraphicsDropShadowEffect, QGridLayout, 
                                 QSplitter, QCalendarWidget, QStyledItemDelegate, QStyle,
                                 QFileDialog, QTextEdit, QCompleter, QStyleOptionViewItem
                                 )
 from PySide6.QtCore import Qt, QDate, QRegularExpression, QSettings, QEvent
-from PySide6.QtGui import (QIntValidator, QRegularExpressionValidator, QFont,
+from PySide6.QtGui import (QIntValidator, QRegularExpressionValidator, QFont, 
                             QColor,  QTextCharFormat, QBrush, QPainter, QStandardItem, QStandardItemModel)
 
 # --- MODERN UI CONFIG ---
@@ -145,13 +145,13 @@ def get_labs():
         cursor.execute("SELECT name FROM labs")
         labs = [r[0] for r in cursor.fetchall()]
         conn.close()
-
+        
         # Türkçe Alfabetik Sıralama (ç, ğ, ı, ö, ş, ü dikkate alınarak)
         tr_alphabet = "AaBbCcÇçDdEeFfGgĞğHhIıİiJjKkLlMmNnOoÖöPpRrSsŞşTtUuÜüVvYyZz"
         tr_key_map = {c: i for i, c in enumerate(tr_alphabet)}
         def tr_sort(s):
             return [tr_key_map.get(c, ord(c)) for c in s]
-
+            
         return sorted(labs, key=tr_sort)
     except:
         return ["TSE", "İSTON", "Royaltest", "Teknolab"]
@@ -163,7 +163,7 @@ class MultiSelectComboBox(QComboBox):
         self.lineEdit().setReadOnly(True)
         self.lineEdit().setPlaceholderText("Laboratuvar seçin...")
         self.closeOnSelect = False
-
+        
         # Standart model yerine checkable itemları destekleyen model
         self.model().itemChanged.connect(self.update_text)
         self.view().viewport().installEventFilter(self)
@@ -186,7 +186,7 @@ class MultiSelectComboBox(QComboBox):
         new_lab, ok = QtWidgets.QInputDialog.getText(self, "Laboratuvar Ekle", "Yeni Laboratuvar Adı:", QLineEdit.EchoMode.Normal)
         if ok and new_lab.strip():
             lab_name = new_lab.strip()[:50] # 50 karakter sınırı
-
+            
             # Veri tabanına kalıcı olarak ekle (Ayarlar'da da görünsün)
             try:
                 conn = get_db_connection()
@@ -201,7 +201,7 @@ class MultiSelectComboBox(QComboBox):
                 if self.model().item(i).text() == lab_name:
                     self.model().item(i).setCheckState(Qt.CheckState.Checked)
                     return
-
+            
             # Yeni item ekle (Ekle butonunun bir üstüne)
             item = QStandardItem(lab_name)
             item.setCheckable(True)
@@ -213,7 +213,7 @@ class MultiSelectComboBox(QComboBox):
         self.model().blockSignals(True)
         self.model().clear()
         current_list = [x.strip() for x in current_val.split(",")] if current_val else []
-
+        
         # Ana liste
         for lab in labs:
             item = QStandardItem(lab)
@@ -223,7 +223,7 @@ class MultiSelectComboBox(QComboBox):
             else:
                 item.setCheckState(Qt.CheckState.Unchecked)
             self.model().appendRow(item)
-
+        
         # Listede olmayan ama veride olan "özel" girişleri ekle
         for val in current_list:
             if val and val not in labs:
@@ -250,7 +250,7 @@ class MultiSelectComboBox(QComboBox):
             item = self.model().item(i)
             if item and item.checkState() == Qt.CheckState.Checked:
                 checked_items.append(item.text())
-
+        
         res = ", ".join(checked_items)
         self.lineEdit().setText(res)
         self.setToolTip(res)
@@ -314,7 +314,7 @@ class LoginDialog(QDialog):
 
         self.remember_me = QCheckBox("Beni Hatırla")
         self.auto_login = QCheckBox("Otomatik Giriş")
-
+        
         check_layout = QHBoxLayout()
         check_layout.addWidget(self.remember_me)
         check_layout.addWidget(self.auto_login)
@@ -341,7 +341,7 @@ class LoginDialog(QDialog):
             if is_remember:
                 self.password_input.setText(saved_pass)
                 self.remember_me.setChecked(True)
-
+            
             if is_auto:
                 self.auto_login.setChecked(True)
                 # If auto-login is on, we'll trigger it shortly after window shows
@@ -367,7 +367,7 @@ class LoginDialog(QDialog):
             else:
                  # Fallback for old schema if migration failed or legacy
                  CURRENT_USER_ROLE = "admin" if username == "admin" else "user"
-
+            
             # Save settings
             self.settings.setValue("username", username)
             if self.remember_me.isChecked():
@@ -376,7 +376,7 @@ class LoginDialog(QDialog):
             else:
                 self.settings.setValue("password", "")
                 self.settings.setValue("remember", "false")
-
+            
             if self.auto_login.isChecked():
                 self.settings.setValue("auto_login", "true")
             else:
@@ -400,42 +400,42 @@ class UserManagementDialog(QDialog):
 
         # Tab widget for different actions
         tabs = QTabWidget()
-
+        
         # Tab 1: Password Change
         pw_tab = QWidget()
         pw_layout = QVBoxLayout(pw_tab)
-
+        
         pw_layout.addWidget(QLabel(f"<b>Kullanıcı:</b> {CURRENT_USER}"))
-
+        
         self.new_pw = QLineEdit()
         self.new_pw.setPlaceholderText("Yeni Şifre")
         self.new_pw.setEchoMode(QLineEdit.EchoMode.Password)
         pw_layout.addWidget(QLabel("Yeni Şifre:"))
         pw_layout.addWidget(self.new_pw)
-
+        
         self.confirm_pw = QLineEdit()
         self.confirm_pw.setPlaceholderText("Yeni Şifre (Tekrar)")
         self.confirm_pw.setEchoMode(QLineEdit.EchoMode.Password)
         pw_layout.addWidget(QLabel("Yeni Şifre (Tekrar):"))
         pw_layout.addWidget(self.confirm_pw)
-
+        
         btn_change = QPushButton("Şifreyi Güncelle")
         btn_change.clicked.connect(self.handle_pw_change)
         pw_layout.addWidget(btn_change)
         pw_layout.addStretch()
-
+        
         tabs.addTab(pw_tab, "Şifre Değiştir")
-
+        
         # Add User (Admin Only)
         if CURRENT_USER_ROLE == "admin":
             add_tab = QWidget()
             add_layout = QVBoxLayout(add_tab)
-
+            
             self.new_username = QLineEdit()
             self.new_username.setPlaceholderText("Yeni Kullanıcı Adı")
             add_layout.addWidget(QLabel("Kullanıcı Adı:"))
             add_layout.addWidget(self.new_username)
-
+            
             self.new_user_pw = QLineEdit()
             self.new_user_pw.setPlaceholderText("Şifre")
             self.new_user_pw.setEchoMode(QLineEdit.EchoMode.Password)
@@ -447,52 +447,52 @@ class UserManagementDialog(QDialog):
             self.new_user_pw_confirm.setEchoMode(QLineEdit.EchoMode.Password)
             add_layout.addWidget(QLabel("Şifre (Tekrar):"))
             add_layout.addWidget(self.new_user_pw_confirm)
-
+            
             self.admin_check = QCheckBox("Yönetici (Admin) Yetkisi Ver")
             add_layout.addWidget(self.admin_check)
-
+            
             btn_add = QPushButton("Kullanıcı Ekle")
             btn_add.clicked.connect(self.handle_add_user)
             add_layout.addWidget(btn_add)
-
+            
             add_layout.addWidget(QLabel("<b>Mevcut Kullanıcılar:</b>"))
             self.user_list = QLabel()
             self.user_list.setWordWrap(True)
             self.user_list.setTextFormat(Qt.TextFormat.RichText)
             add_layout.addWidget(self.user_list)
-
+            
             add_layout.addStretch()
             tabs.addTab(add_tab, "Kullanıcı Ekle")
 
             # Tab 3: Role Management (Admin Only)
             role_tab = QWidget()
             role_layout = QVBoxLayout(role_tab)
-
+            
             role_layout.addWidget(QLabel("<b>Kullanıcı Yetkilerini Düzenle</b>"))
-
+            
             self.role_user_combo = QComboBox()
             self.role_user_combo.setView(QListView())
             self.role_user_combo.setItemDelegate(DropdownDelegate())
             self.role_user_combo.currentIndexChanged.connect(self.on_role_user_selected)
             role_layout.addWidget(QLabel("Kullanıcı Seç:"))
             role_layout.addWidget(self.role_user_combo)
-
+            
             self.role_admin_check = QCheckBox("Yönetici (Admin) Yetkisi")
             role_layout.addWidget(self.role_admin_check)
-
+            
             btn_update_role = QPushButton("Yetkiyi Güncelle")
             btn_update_role.clicked.connect(self.handle_role_update)
             role_layout.addWidget(btn_update_role)
-
+            
             role_layout.addStretch()
             tabs.addTab(role_tab, "Rol Yönetimi")
-
+            
             # Load users for role mgmt
             self.refresh_role_combo()
             self.update_user_list_display()
-
+            
         layout.addWidget(tabs)
-
+        
         close_btn = QPushButton("Kapat")
         close_btn.clicked.connect(self.reject)
         layout.addWidget(close_btn)
@@ -500,14 +500,14 @@ class UserManagementDialog(QDialog):
     def handle_pw_change(self):
         pw1 = self.new_pw.text()
         pw2 = self.confirm_pw.text()
-
+        
         if not pw1:
             QMessageBox.warning(self, "Hata", "Şifre boş olamaz!")
             return
         if pw1 != pw2:
             QMessageBox.warning(self, "Hata", "Şifreler uyuşmuyor!")
             return
-
+            
         update_password(CURRENT_USER, pw1)
         log_action("Şifre Değiştirme", f"Kullanıcı: {CURRENT_USER}")
         QMessageBox.information(self, "Başarılı", "Şifreniz güncellendi.")
@@ -519,15 +519,15 @@ class UserManagementDialog(QDialog):
         pw = self.new_user_pw.text()
         pw_confirm = self.new_user_pw_confirm.text()
         role = "admin" if self.admin_check.isChecked() else "user"
-
+        
         if not name or not pw:
             QMessageBox.warning(self, "Hata", "Kullanıcı adı ve şifre gereklidir!")
             return
-
+            
         if pw != pw_confirm:
             QMessageBox.warning(self, "Hata", "Şifreler uyuşmuyor!")
             return
-
+            
         if add_user(name, pw, role):
             log_action("Kullanıcı Ekleme", f"Yeni Kullanıcı: {name}, Rol: {role}")
             QMessageBox.information(self, "Başarılı", f"'{name}' kullanıcısı ({role}) eklendi.")
@@ -553,14 +553,14 @@ class UserManagementDialog(QDialog):
         users_raw = fetch_users_raw()
         admins = sorted([u for u, r in users_raw if r == "admin"])
         users = sorted([u for u, r in users_raw if r != "admin"])
-
+        
         html = ""
         if admins:
             html += "<b>Yöneticiler (Admin):</b><br>" + ", ".join(admins) + "<br><br>"
-
+        
         if users:
             html += "<b>Kullanıcılar (User):</b><br>" + ", ".join(users)
-
+            
         self.user_list.setText(html)
 
     def on_role_user_selected(self):
@@ -573,19 +573,19 @@ class UserManagementDialog(QDialog):
     def handle_role_update(self):
         data = self.role_user_combo.currentData()
         if not data: return
-
+        
         username, old_role = data
         new_role = "admin" if self.role_admin_check.isChecked() else "user"
-
+        
         if username == "admin" and new_role != "admin":
              QMessageBox.warning(self, "Hata", "Ana 'admin' kullanıcısının yetkisi alınamaz!")
              self.role_admin_check.setChecked(True)
              return
-
+             
         update_user_role(username, new_role)
         log_action("Yetki Güncelleme", f"Kullanıcı: {username}, Yeni Rol: {new_role}")
         QMessageBox.information(self, "Başarılı", f"'{username}' için yetki güncellendi.")
-
+        
         # Refresh lists
         self.update_user_list_display()
         self.refresh_role_combo()
@@ -596,17 +596,17 @@ class FirmDetailDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(f"Firma Detayları: {firm_name}")
         self.resize(1300, 650)
-
+        
         # Tema desteği (Parent'tan al)
         is_dark = parent.parent_window.is_dark_mode if parent and hasattr(parent, 'parent_window') else False
-
+        
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
-
+        
         title = QLabel(f"🏢 {firm_name} - İhale Geçmişi")
         title.setStyleSheet("font-size: 16px; font-weight: bold; color: #6366f1;")
         layout.addWidget(title)
-
+        
         self.table = QTableWidget()
         self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels([
@@ -619,48 +619,48 @@ class FirmDetailDialog(QDialog):
         self.table.setWordWrap(True)
         self.table.setItemDelegate(WordWrapDelegate(1, self.table))
         self.table.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollMode.ScrollPerPixel)
-
+        
         self.table.setRowCount(len(tenders))
         for i, t in enumerate(tenders):
             parts = t["parts"]
             # En son güncellenen veriden tarihleri al
             sozlesme_raw = parts[0][17] if len(parts[0]) > 17 else ""
             ise_baslama_raw = str(parts[0][26])[:10] if len(parts[0]) > 26 and parts[0][26] else ""
-
+            
             delivery_dates = [p[5] for p in parts if p[5]]
             is_sonu_raw = max(delivery_dates) if delivery_dates else ""
-
+            
             # IKN
             self.table.setItem(i, 0, SortableTableWidgetItem(str(t["ikn"])))
-
+            
             # İhale Adı
             self.table.setItem(i, 1, SortableTableWidgetItem(str(t["ihale"])))
-
+            
             # Sözleşme Tutarı
             tutar_val = t.get("total_amount", 0.0)
             tutar_item = SortableTableWidgetItem(format_money(tutar_val) + " TL")
             tutar_item.setData(Qt.ItemDataRole.UserRole, tutar_val)
             tutar_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(i, 2, tutar_item)
-
+            
             # Sözleşme Tarihi
             s_item = SortableTableWidgetItem(format_date_tr(sozlesme_raw))
             s_item.setData(Qt.ItemDataRole.UserRole, sozlesme_raw if sozlesme_raw else "0000-00-00")
             s_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(i, 3, s_item)
-
+            
             # İşe Başlama
             b_item = SortableTableWidgetItem(format_date_tr(ise_baslama_raw))
             b_item.setData(Qt.ItemDataRole.UserRole, ise_baslama_raw if ise_baslama_raw else "0000-00-00")
             b_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(i, 4, b_item)
-
+            
             # İş Sonu
             e_item = SortableTableWidgetItem(format_date_tr(is_sonu_raw))
             e_item.setData(Qt.ItemDataRole.UserRole, is_sonu_raw if is_sonu_raw else "0000-00-00")
             e_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(i, 5, e_item)
-
+            
         # Boyutlandırma Ayarları
         self.table.resizeColumnsToContents()
         self.table.resizeRowsToContents()
@@ -668,14 +668,14 @@ class FirmDetailDialog(QDialog):
         for i in range(self.table.rowCount()):
             if self.table.rowHeight(i) > 60:
                 self.table.setRowHeight(i, 60)
-
+        
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         # İhale Adı sütununu esnek yap ama diğerleri içeriğe göre kalsın
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-
+        
         layout.addWidget(self.table)
-
+        
         btn_box = QHBoxLayout()
         btn_box.addStretch()
         close_btn = QPushButton("Kapat")
@@ -690,13 +690,13 @@ class SortableTableWidgetItem(QTableWidgetItem):
         # Özel sıralama anahtarı (UserRole) varsa ona göre sırala
         v1 = self.data(Qt.ItemDataRole.UserRole)
         v2 = other.data(Qt.ItemDataRole.UserRole)
-
+        
         if v1 is not None and v2 is not None:
             try:
                 return v1 < v2
             except (TypeError, ValueError):
                 pass # Farklı tipler gelirse metin sıralamasına düş
-
+        
         # Standart metin sıralaması (Özyinelemeyi önlemek için super().__lt__ kullanmıyoruz)
         # Türkçe karakter desteği ile sırala
         return tr_key(self.text()) < tr_key(other.text())
@@ -732,22 +732,22 @@ def check_and_create_backup():
             base_path = os.path.dirname(sys.executable)
         else:
             base_path = os.path.dirname(os.path.abspath(__file__))
-
+            
         db_path = os.path.join(base_path, 'veriler.db')
         backup_dir = os.path.join(base_path, 'Yedekler')
-
+        
         # Eğer veritabanı yoksa yedeklenecek bir şey de yoktur
         if not os.path.exists(db_path):
             return
-
+            
         # Yedekler klasörü yoksa oluştur
         os.makedirs(backup_dir, exist_ok=True)
-
+        
         # Mevcut yedekleri bul
         backups = [f for f in os.listdir(backup_dir) if f.startswith('veriler_yedek_') and f.endswith('.db')]
-
+        
         needs_backup = False
-
+        
         if not backups:
             needs_backup = True
         else:
@@ -767,7 +767,7 @@ def check_and_create_backup():
                     mtime_dt = datetime.fromtimestamp(mtime)
                     if latest_time is None or mtime_dt > latest_time:
                         latest_time = mtime_dt
-
+            
             # 7 gün (1 hafta) geçmiş mi kontrol et
             if latest_time:
                 time_diff = datetime.now() - latest_time
@@ -775,13 +775,13 @@ def check_and_create_backup():
                     needs_backup = True
             else:
                 needs_backup = True
-
+                
         if needs_backup:
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             backup_file = os.path.join(backup_dir, f"veriler_yedek_{timestamp}.db")
             shutil.copy(db_path, backup_file)
             print(f"Yedek alındı: {backup_file}")
-
+            
     except Exception as e:
         print(f"Yedekleme hatası: {e}")
 
@@ -792,11 +792,11 @@ def get_db_connection():
         base_path = os.path.dirname(sys.executable)
     else:
         base_path = os.path.dirname(os.path.abspath(__file__))
-
+        
     db_path = os.path.join(base_path, 'veriler.db')
     conn = sqlite3.connect(db_path, check_same_thread=False)
     cursor = conn.cursor()
-
+    
     # --- DB INIT & MIGRATIONS ---
     try:
         cursor.execute("SELECT `Parti Miktari` FROM data LIMIT 1")
@@ -805,7 +805,7 @@ def get_db_connection():
             cursor.execute("ALTER TABLE data ADD COLUMN `Parti Miktari` TEXT")
             conn.commit()
         except: pass
-
+            
     try:
         cursor.execute("SELECT `Sozlesme Tarihi` FROM data LIMIT 1")
     except:
@@ -848,7 +848,7 @@ def get_db_connection():
     cursor.execute("SELECT COUNT(*) FROM users")
     if cursor.fetchone()[0] == 0:
         cursor.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", ("admin", "admin", "admin"))
-
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -976,7 +976,7 @@ def parse_money(text):
         else:
             # Hiç ayraç yoksa: düz sayı
             clean_text = text_str
-
+            
         return float(clean_text)
     except:
         return 0.0
@@ -1030,25 +1030,25 @@ def get_summary_data(show_all=False):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT rowid, *, SonGuncelleme FROM data
+        SELECT rowid, *, SonGuncelleme FROM data 
         WHERE (`Odeme Emri Hazirlandi` IS NULL OR `Odeme Emri Hazirlandi` = 0.0)
-        ORDER BY CASE WHEN `Parti Son Teslim Tarihi` IS NULL THEN 1 ELSE 0 END,
-                 `Parti Son Teslim Tarihi` ASC,
+        ORDER BY CASE WHEN `Parti Son Teslim Tarihi` IS NULL THEN 1 ELSE 0 END, 
+                 `Parti Son Teslim Tarihi` ASC, 
                  `Parti No` ASC
     """)
     all_pending = cursor.fetchall()
-
+    
     if show_all:
         conn.close()
         return all_pending
-
+        
     seen_counts = {}
     summary = []
     for record in all_pending:
         ikn = record[1]
         firma = record[2]
         key = (ikn, firma)
-
+        
         current_count = seen_counts.get(key, 0)
         if current_count < 2:
             summary.append(record)
@@ -1069,11 +1069,11 @@ def get_aggregated_tender_data():
                 "total_amount": 0.0,
                 "parts": []
             }
-
+        
         tutar = r[6] if r[6] else 0.0
         grouped[key]["total_amount"] += float(tutar)
         grouped[key]["parts"].append(r)
-
+        
     # Convert to list
     result = []
     for key, data in grouped.items():
@@ -1095,7 +1095,7 @@ def get_firm_summary_data(selected_year=None):
         f_name = r[2]
         tarih_str = r[5]
         tender_key = (r[1], r[2], r[3]) # IKN, Firma, Ihale
-
+        
         # Filter by year if requested
         if selected_year and selected_year != "Tümü":
             try:
@@ -1111,13 +1111,13 @@ def get_firm_summary_data(selected_year=None):
                 "part_count": 0,
                 "total_volume": 0.0
             }
-
+        
         firms[f_name]["tenders"].add(tender_key)
-
+        
         tutar = float(r[6]) if r[6] else 0.0
         firms[f_name]["part_count"] += 1
         firms[f_name]["total_volume"] += tutar
-
+    
     # Convert to list
     result = []
     for name, data in firms.items():
@@ -1140,7 +1140,7 @@ class NewTenderDialog(QDialog):
     def setup_ui(self):
         layout = QVBoxLayout(self)
         self.fields = {}
-
+        
         form_items = [
             ("IKN", "Örn: 2026/12345"),
             ("Ihale Adi", "İhale adını giriniz"),
@@ -1151,7 +1151,7 @@ class NewTenderDialog(QDialog):
         ]
 
         # Custom handling for specific fields
-
+        
         # IKN
         layout.addWidget(QLabel("<b>IKN:</b>"))
         self.fields["IKN"] = QLineEdit()
@@ -1168,7 +1168,7 @@ class NewTenderDialog(QDialog):
         layout.addWidget(QLabel("<b>Yuklenici Firma:</b>"))
         self.fields["Yuklenici Firma"] = QLineEdit()
         self.fields["Yuklenici Firma"].setPlaceholderText("Yüklenici Firma bilgisini giriniz")
-
+        
         # --- Auto-complete for Yüklenici Firma ---
         try:
             conn = get_db_connection()
@@ -1176,7 +1176,7 @@ class NewTenderDialog(QDialog):
             cursor.execute("SELECT DISTINCT `Yuklenici Firma` FROM data WHERE `Yuklenici Firma` IS NOT NULL AND `Yuklenici Firma` != ''")
             firm_names = [row[0] for row in cursor.fetchall() if row[0]]
             conn.close()
-
+            
             if firm_names:
                 completer = QCompleter(firm_names, self)
                 completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
@@ -1184,7 +1184,7 @@ class NewTenderDialog(QDialog):
                 self.fields["Yuklenici Firma"].setCompleter(completer)
         except Exception as e:
             print("Completer error:", e)
-
+        
         layout.addWidget(self.fields["Yuklenici Firma"])
 
         # Sözleşme Tutarı
@@ -1244,18 +1244,18 @@ class NewTenderDialog(QDialog):
         line_edit = self.sender()
         if not text:
             return
-
+            
         # Mevcut imleç konumu
         cursor = line_edit.cursorPosition()
         # İmleçten önceki rakam/virgül sayısı (noktalar hariç)
         text_before_cursor = text[:cursor]
         digit_count_before = len(text_before_cursor.replace('.', ''))
-
+        
         line_edit.blockSignals(True)
-
+        
         # Noktaları temizle, virgülü koru
         clean_text = text.replace('.', '')
-
+        
         if ',' in clean_text:
             parts = clean_text.split(',', 1)
             integer_part = parts[0]
@@ -1265,7 +1265,7 @@ class NewTenderDialog(QDialog):
             integer_part = clean_text
             decimal_part = ""
             has_comma = False
-
+            
         if integer_part.isdigit():
             # Binlik ayırıcı ekle
             formatted_int = "{:,}".format(int(integer_part)).replace(',', '.')
@@ -1274,9 +1274,9 @@ class NewTenderDialog(QDialog):
                 new_text += "," + decimal_part
         else:
             new_text = clean_text
-
+            
         line_edit.setText(new_text)
-
+        
         # İmleç konumunu yeniden hesapla
         new_cursor = 0
         digits_found = 0
@@ -1286,7 +1286,7 @@ class NewTenderDialog(QDialog):
             new_cursor += 1
             if digits_found >= digit_count_before:
                 break
-
+        
         line_edit.setCursorPosition(new_cursor)
         line_edit.blockSignals(False)
 
@@ -1295,23 +1295,23 @@ class NewTenderDialog(QDialog):
             ikn = self.fields["IKN"].text()
             ihale = self.fields["Ihale Adi"].text()
             firma = self.fields["Yuklenici Firma"].text()
-
+            
         # Turkish Currency Parsing: Remove dots, replace comma with dot
             tutar_str = self.fields["Sözleşme Tutarı (TL)"].text()
             toplam_tutar = parse_money(tutar_str)
-
+            
             parti_sayisi = int(self.fields["Parti Sayısı"].text())
             parti_miktari = self.fields["Parti Miktarı"].text()
             termin_araligi = int(self.fields["Termin Aralığı (Gün)"].text() or "30")
-
+            
             # Date Handling
             sozlesme_tarihi_qdate = self.fields["Sözleşme Tarihi"].date()
             sozlesme_tarihi = datetime(sozlesme_tarihi_qdate.year(), sozlesme_tarihi_qdate.month(), sozlesme_tarihi_qdate.day())
             sozlesme_tarihi_str = sozlesme_tarihi.strftime("%Y-%m-%d")
-
+            
             # İlk parti teslim tarihi = Sözleşme Tarihi + Termin Aralığı
             ilk_teslim_tarihi = sozlesme_tarihi + timedelta(days=termin_araligi)
-
+            
             parti_tutari = toplam_tutar / parti_sayisi
 
             timestamp = datetime.now().strftime("%d.%m.%Y %H:%M")
@@ -1324,12 +1324,12 @@ class NewTenderDialog(QDialog):
                 # Her parti için teslim tarihi (ilk teslimden itibaren termin_araligi ekleyerek)
                 teslim_tarihi = (ilk_teslim_tarihi + timedelta(days=termin_araligi*(i-1))).strftime("%Y-%m-%d")
                 cursor.execute("""
-                    INSERT INTO data
-                    (`IKN`, `Yuklenici Firma`, `Ihale Adi`, `Parti No`, `Parti Son Teslim Tarihi`, `Parti Miktari`, `Parti Tutari`,
+                    INSERT INTO data 
+                    (`IKN`, `Yuklenici Firma`, `Ihale Adi`, `Parti No`, `Parti Son Teslim Tarihi`, `Parti Miktari`, `Parti Tutari`, 
                      `Ambar teslimi gerceklesti`, `Testler basladi`, `Test sonuclari geldi`, `Muayene - Kabul  Evragi imzada`, `Kabul Yapildi`, `Odeme Emri Hazirlandi`, `Aciklama`, `SonGuncelleme`, `Sozlesme Tarihi`)
                     VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, '', ?, ?)
                 """, (ikn, firma, ihale, i, teslim_tarihi, parti_miktari, parti_tutari, audit_info, sozlesme_tarihi_str))
-
+            
             log_action("Kayıt Oluşturma", f"IKN: {ikn}, Firma: {firma}, Parti Sayısı: {parti_sayisi}")
             conn.commit()
             conn.close()
@@ -1543,7 +1543,7 @@ class NewBatchDialog(QDialog):
             return
         cursor_pos = line_edit.cursorPosition()
         old_len = len(text)
-
+        
         # Sadece sayıları ve virgülü koru
         clean_text = text.replace('.', '')
         if ',' in clean_text:
@@ -1553,7 +1553,7 @@ class NewBatchDialog(QDialog):
         else:
             integer_part = clean_text
             decimal_part = ""
-
+            
         if not integer_part and not decimal_part:
             return
 
@@ -1565,13 +1565,13 @@ class NewBatchDialog(QDialog):
                 groups = [rev_val[i:i+3] for i in range(0, len(rev_val), 3)]
                 formatted_int = ".".join(groups)[::-1]
                 if is_negative: formatted_int = "-" + formatted_int
-
+                
                 new_text = formatted_int + decimal_part
-
+                
                 line_edit.blockSignals(True)
                 line_edit.setText(new_text)
                 line_edit.blockSignals(False)
-
+                
                 new_len = len(new_text)
                 new_pos = cursor_pos + (new_len - old_len)
                 line_edit.setCursorPosition(max(0, new_pos))
@@ -1631,7 +1631,7 @@ class EditDialog(QDialog):
         self.setWindowTitle("Hızlı Durum Güncelle" if simplified else "Kayıt Düzenle")
         self.resize(700, 800)
         self.setup_ui()
-
+        
     def setup_ui(self):
         main_layout = QVBoxLayout(self)
 
@@ -1639,7 +1639,7 @@ class EditDialog(QDialog):
         is_dark = False
         settings = QSettings("IhaleSystem", f"UserPrefs/{CURRENT_USER}")
         is_dark = settings.value("dark_mode", False, type=bool)
-
+        
         if not is_dark and self.parent():
             if hasattr(self.parent(), 'is_dark_mode'):
                 is_dark = self.parent().is_dark_mode
@@ -1660,12 +1660,12 @@ class EditDialog(QDialog):
         header_text = (f"<span style='color:{title_color}; font-weight:bold;'>IKN:</span> {self.record[1]} | "
                        f"<span style='color:{title_color}; font-weight:bold;'>Firma:</span> {self.record[2]}<br>"
                        f"<span style='color:{title_color}; font-weight:bold;'>İhale:</span> {self.record[3]} (Parti {self.record[4]})")
-
+        
         header_lbl = QLabel(header_text)
         header_lbl.setWordWrap(True)
         header_lbl.setStyleSheet(f"font-size: 13px; color: {val_color}; padding: 8px; background: {header_bg}; border-radius: 6px; border: 1px solid {header_border};")
         main_layout.addWidget(header_lbl)
-
+        
         # --- TAB YAPISI ---
         self.tabs = QTabWidget()
         main_layout.addWidget(self.tabs)
@@ -1673,7 +1673,7 @@ class EditDialog(QDialog):
         # 1. SEKME: TEMEL BİLGİLER
         tab_basic = QWidget()
         layout_basic = QVBoxLayout(tab_basic)
-
+        
         scroll_basic = QScrollArea()
         scroll_basic.setWidgetResizable(True)
         scroll_basic_content = QWidget()
@@ -1746,7 +1746,7 @@ class EditDialog(QDialog):
         # 2. SEKME: İŞLEM ADIMLARI
         tab_steps = QWidget()
         layout_steps = QVBoxLayout(tab_steps)
-
+        
         scroll_steps = QScrollArea()
         scroll_steps.setWidgetResizable(True)
         scroll_steps_content = QWidget()
@@ -1754,21 +1754,21 @@ class EditDialog(QDialog):
 
         self.cb_list = {}
         steps = [
-            ("1. Ambar Teslimi Gerçekleşti", 7),
-            ("2. Heyet Başkanına Haber Verildi", 19),
-            ("3. Testler Başladı", 8),
+            ("1. Ambar Teslimi Gerçekleşti", 7), 
+            ("2. Heyet Başkanına Haber Verildi", 19), 
+            ("3. Testler Başladı", 8), 
             ("4. Test Sonuçları Geldi", 9),
-            ("5. Kabul Raporu imzada", 10),
-            ("6. Kabul Yapıldı", 11),
+            ("5. Kabul Raporu imzada", 10), 
+            ("6. Kabul Yapıldı", 11), 
             ("7. Ödeme Belgesi Oluşturuldu", 13)
         ]
-
+        
         self.test_start_edit = MultiSelectComboBox()
         test_start_val = str(self.record[20]) if len(self.record) > 20 and self.record[20] else ""
         self.test_start_edit.add_labs(get_labs(), test_start_val)
         self.test_start_edit.setStyleSheet(edit_style)
         self.test_start_edit.setFixedWidth(250)
-
+        
         self.test_result_edit = MultiSelectComboBox()
         test_result_val = str(self.record[21]) if len(self.record) > 21 and self.record[21] else ""
         self.test_result_edit.add_labs(get_labs(), test_result_val)
@@ -1777,7 +1777,7 @@ class EditDialog(QDialog):
 
         steps_grid = QGridLayout()
         steps_grid.setVerticalSpacing(12)
-
+        
         for i, (text, idx) in enumerate(steps):
             steps_grid.setRowMinimumHeight(i, 45)
             is_checked = (self.record[idx] == 1.0) if idx < len(self.record) else False
@@ -1785,24 +1785,24 @@ class EditDialog(QDialog):
             cb.setChecked(is_checked)
             cb.setStyleSheet("font-size: 13px; font-weight: bold;")
             self.cb_list[text] = cb
-
+            
             steps_grid.addWidget(cb, i, 0)
-
+            
             if "Testler Başladı" in text:
                 lab_layout = QHBoxLayout()
                 lab_layout.setContentsMargins(0, 0, 0, 0)
-                lab_layout.addWidget(QLabel("Test Laboratuvar(lar)ı:___"))
+                lab_layout.addWidget(QLabel("Test Laboratuvar(lar)ı: "))
                 lab_layout.addWidget(self.test_start_edit)
                 lab_layout.addStretch()
                 steps_grid.addLayout(lab_layout, i, 1)
             elif "Test Sonuçları Geldi" in text:
                 res_layout = QHBoxLayout()
                 res_layout.setContentsMargins(0, 0, 0, 0)
-                res_layout.addWidget(QLabel("Sonuç Laboratuvar(lar)ı:_"))
+                res_layout.addWidget(QLabel("Sonuç Laboratuvar(lar)ı: "))
                 res_layout.addWidget(self.test_result_edit)
                 res_layout.addStretch()
                 steps_grid.addLayout(res_layout, i, 1)
-
+                
         scroll_steps_layout.addLayout(steps_grid)
 
         # --- Açıklama ---
@@ -1835,47 +1835,47 @@ class EditDialog(QDialog):
         if not self.simplified:
             tab_advanced = QWidget()
             layout_advanced = QVBoxLayout(tab_advanced)
-
+            
             scroll_adv = QScrollArea()
             scroll_adv.setWidgetResizable(True)
             scroll_adv_content = QWidget()
             scroll_adv_layout = QVBoxLayout(scroll_adv_content)
-
+            
             adv_grid = QGridLayout()
-
+            
             self.ihale_turu_edit = QLineEdit(str(self.record[22]) if len(self.record) > 22 and self.record[22] else "")
             self.ihale_turu_edit.setStyleSheet(edit_style)
-
+            
             turu_list = get_unique_column_values("Ihale Turu")
             if turu_list:
                 completer = QCompleter(turu_list, self)
                 completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
                 completer.setFilterMode(Qt.MatchFlag.MatchContains)
                 self.ihale_turu_edit.setCompleter(completer)
-
+                
             adv_grid.addWidget(QLabel("İhale Türü:"), 0, 0); adv_grid.addWidget(self.ihale_turu_edit, 0, 1)
-
+            
             self.ihale_usulu_edit = QLineEdit(str(self.record[23]) if len(self.record) > 23 and self.record[23] else "")
             self.ihale_usulu_edit.setStyleSheet(edit_style)
-
+            
             usul_list = get_unique_column_values("Ihale Usulu")
             if usul_list:
                 completer = QCompleter(usul_list, self)
                 completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
                 completer.setFilterMode(Qt.MatchFlag.MatchContains)
                 self.ihale_usulu_edit.setCompleter(completer)
-
+                
             adv_grid.addWidget(QLabel("İhale Usulü:"), 1, 0); adv_grid.addWidget(self.ihale_usulu_edit, 1, 1)
-
+            
             self.yak_maliyet_edit = QLineEdit(str(self.record[24]) if len(self.record) > 24 and self.record[24] else "")
             self.yak_maliyet_edit.setStyleSheet(edit_style)
             adv_grid.addWidget(QLabel("Yak. Maliyet:"), 2, 0); adv_grid.addWidget(self.yak_maliyet_edit, 2, 1)
-
+            
             self.isin_suresi_edit = QLineEdit()
             self.isin_suresi_edit.setStyleSheet(edit_style)
             self.isin_suresi_edit.setPlaceholderText("Otomatik hesaplanır...")
             adv_grid.addWidget(QLabel("İşin Süresi:"), 3, 0); adv_grid.addWidget(self.isin_suresi_edit, 3, 1)
-
+            
             self.ihale_tarihi_edit = QDateEdit(); self.ihale_tarihi_edit.setCalendarPopup(True)
             self.ihale_tarihi_edit.setStyleSheet(edit_style)
             try:
@@ -1888,10 +1888,10 @@ class EditDialog(QDialog):
 
             self.ise_baslama_edit = QDateEdit(); self.ise_baslama_edit.setCalendarPopup(True)
             self.ise_baslama_edit.setStyleSheet(edit_style)
-
+            
             soz_val = self.record[17] if len(self.record) > 17 and self.record[17] else None
             bas_val = self.record[26] if len(self.record) > 26 and self.record[26] else None
-
+            
             final_date = QDate.currentDate()
             if bas_val:
                 try:
@@ -1904,29 +1904,29 @@ class EditDialog(QDialog):
                     d_next = d + timedelta(days=1)
                     final_date = QDate(d_next.year, d_next.month, d_next.day)
                 except: pass
-
+                
             self.ise_baslama_edit.setDate(final_date)
             self.ise_baslama_edit.dateChanged.connect(self.calculate_duration)
             adv_grid.addWidget(QLabel("İşe Başlama:"), 5, 0); adv_grid.addWidget(self.ise_baslama_edit, 5, 1)
-
+            
             self.cari_no_edit = QLineEdit(str(self.record[28]) if len(self.record) > 28 and self.record[28] else "")
             self.cari_no_edit.setStyleSheet(edit_style)
             adv_grid.addWidget(QLabel("Cari No:"), 6, 0); adv_grid.addWidget(self.cari_no_edit, 6, 1)
-
+            
             self.proje_no_edit = QLineEdit(str(self.record[29]) if len(self.record) > 29 and self.record[29] else "")
             self.proje_no_edit.setStyleSheet(edit_style)
             adv_grid.addWidget(QLabel("Proje No:"), 7, 0); adv_grid.addWidget(self.proje_no_edit, 7, 1)
-
+            
             self.kart_no_edit = QLineEdit(str(self.record[30]) if len(self.record) > 30 and self.record[30] else "")
             self.kart_no_edit.setStyleSheet(edit_style)
             adv_grid.addWidget(QLabel("Kart No:"), 8, 0); adv_grid.addWidget(self.kart_no_edit, 8, 1)
-
+            
             scroll_adv_layout.addLayout(adv_grid)
             scroll_adv_layout.addStretch()
             scroll_adv.setWidget(scroll_adv_content)
             layout_advanced.addWidget(scroll_adv)
             self.tabs.addTab(tab_advanced, "🛠️ Detaylı Bilgiler")
-
+            
             # İlk süre hesaplamasını tetikle
             self.calculate_duration()
 
@@ -1936,7 +1936,7 @@ class EditDialog(QDialog):
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("İptal")
         buttons.accepted.connect(self.save_changes); buttons.rejected.connect(self.reject)
         main_layout.addWidget(buttons)
-
+        
     def calculate_duration(self):
         """İşe başlama ve teslim tarihi arasındaki farkı hesaplar."""
         if self.simplified:
@@ -1945,7 +1945,7 @@ class EditDialog(QDialog):
             if hasattr(self, 'isin_suresi_edit'):
                 self.isin_suresi_edit.setText('-')
             return
-
+            
         try:
             start_date = self.ise_baslama_edit.date()
             end_date = self.tarih_edit.date()
@@ -1991,27 +1991,27 @@ class EditDialog(QDialog):
     def save_changes(self):
         try:
             changes = []
-
+            
             # Checkbox güncellemeleri
             for text, cb in self.cb_list.items():
                 db_col = COLUMN_MAPPING.get(text, text)
                 new_val = 1.0 if cb.isChecked() else 0.0
-
+                
                 idx = next((i for t, i in [
-                    ("1. Ambar Teslimi Gerçekleşti", 7),
+                    ("1. Ambar Teslimi Gerçekleşti", 7), 
                     ("2. Heyet Başkanına Haber Verildi", 19),
-                    ("3. Testler Başladı", 8),
+                    ("3. Testler Başladı", 8), 
                     ("4. Test Sonuçları Geldi", 9),
-                    ("5. Kabul Raporu imzada", 10),
-                    ("6. Kabul Yapıldı", 11),
+                    ("5. Kabul Raporu imzada", 10), 
+                    ("6. Kabul Yapıldı", 11), 
                     ("7. Ödeme Belgesi Oluşturuldu", 13)
                 ] if t == text), None)
-
+                
                 old_val = self.record[idx] if idx is not None and idx < len(self.record) else 0.0
                 if new_val != old_val:
                     status_str = "✓" if new_val == 1.0 else "○"
                     changes.append(f"{text}: {status_str}")
-
+                
                 update_record(self.rowid, db_col, new_val)
 
             # --- NORMAL DÜZENLEME MODU (Sadece simplified=False ise) ---
@@ -2035,7 +2035,7 @@ class EditDialog(QDialog):
                 if new_parti != int(self.record[4]):
                     changes.append(f"Parti No: {new_parti}")
                 update_record(self.rowid, "Parti No", new_parti)
-
+                
                 new_miktar = self.miktar_edit.text()
                 old_miktar = str(self.record[16]) if len(self.record) > 16 and self.record[16] else ""
                 if new_miktar != old_miktar:
@@ -2052,7 +2052,7 @@ class EditDialog(QDialog):
                 if abs(new_tutar - float(self.record[6] or 0)) > 0.01:
                     changes.append(f"Tutar: {format_money(new_tutar)} TL")
                 update_record(self.rowid, "Parti Tutari", new_tutar)
-
+                
                 new_tarih = self.tarih_edit.date().toString("yyyy-MM-dd")
                 if new_tarih != str(self.record[5]):
                     changes.append(f"Teslim Tarihi: {format_date_tr(new_tarih)}")
@@ -2074,35 +2074,35 @@ class EditDialog(QDialog):
             old_desc = str(self.record[14]) if len(self.record) > 14 else ""
             if new_desc != old_desc:
                 changes.append(f"Açıklama: {new_desc}")
-
+            
             timestamp = datetime.now().strftime("%d.%m.%Y %H:%M")
             audit_log = f"Düzenleme: {CURRENT_USER} ({timestamp})"
-
+            
             update_record(self.rowid, "Aciklama", new_desc)
             update_record(self.rowid, "SonGuncelleme", audit_log)
-
+            
             if hasattr(self, 'test_start_edit') and self.test_start_edit is not None:
                 new_test_start = self.test_start_edit.get_checked_items()
                 if new_test_start != (str(self.record[20]) if len(self.record) > 20 else ""):
                     changes.append(f"Testler Başladı Detay: {new_test_start}")
                 update_record(self.rowid, "Testler Basladi Detay", new_test_start)
-
+            
             if hasattr(self, 'test_result_edit') and self.test_result_edit is not None:
                 new_test_result = self.test_result_edit.get_checked_items()
                 if new_test_result != (str(self.record[21]) if len(self.record) > 21 else ""):
                     changes.append(f"Test Sonuçları Geldi Detay: {new_test_result}")
                 update_record(self.rowid, "Test Sonuclari Geldi Detay", new_test_result)
-
+            
             # Detailed Logging
             ikn = self.record[1]
             firma = self.record[2]
-
+            
             details_str = f"IKN: {ikn} | Firma: {firma} | Parti: {self.record[4]}"
             if changes:
                 details_str += " | Değişiklikler: " + ", ".join(changes)
             else:
                 details_str += " | (Değişiklik yapılmadı)"
-
+                
             log_action("Kayıt Güncelleme", details_str)
 
             self.accept()
@@ -2115,12 +2115,12 @@ class BulkEditDialog(QDialog):
         super().__init__(parent)
         self.records = records  # List of full record tuples
         self.setWindowTitle(f"Toplu Kayıt Düzenle ({len(records)} kayıt)")
-        self.setFixedWidth(725)
+        self.setFixedWidth(700)
         self.setup_ui()
-
+        
     def setup_ui(self):
         main_layout = QVBoxLayout(self)
-        self.resize(725, 600)
+        self.resize(700, 580)
 
         # Tema tespiti
         is_dark = False
@@ -2143,7 +2143,7 @@ class BulkEditDialog(QDialog):
         # 1. SEKME: TEMEL BİLGİLER
         tab_basic = QWidget()
         layout_basic = QVBoxLayout(tab_basic)
-
+        
         scroll_basic = QScrollArea()
         scroll_basic.setWidgetResizable(True)
         scroll_basic_content = QWidget()
@@ -2153,11 +2153,11 @@ class BulkEditDialog(QDialog):
         ikns = set(str(r[1]) for r in self.records if r[1])
         firmas = set(str(r[2]) for r in self.records if r[2])
         ihales = set(str(r[3]) for r in self.records if r[3])
-
+        
         default_ikn = next(iter(ikns)) if len(ikns) == 1 else ""
         default_firma = next(iter(firmas)) if len(firmas) == 1 else ""
         default_ihale = next(iter(ihales)) if len(ihales) == 1 else ""
-
+        
         sozlesmes = set(str(r[17]) for r in self.records if len(r) > 17 and r[17])
         default_sozlesme = next(iter(sozlesmes)) if len(sozlesmes) == 1 else ""
 
@@ -2190,7 +2190,7 @@ class BulkEditDialog(QDialog):
         self.cb_update_sozlesme.toggled.connect(self.sozlesme_edit.setEnabled)
         self.sozlesme_edit.dateChanged.connect(self.on_sozlesme_date_changed)
         form_layout.addWidget(self.cb_update_sozlesme, 3, 0); form_layout.addWidget(self.sozlesme_edit, 3, 1)
-
+        
         self.cb_update_miktar = QCheckBox("Miktarı Güncelle:")
         self.miktar_edit = QLineEdit(); self.miktar_edit.setEnabled(False); self.miktar_edit.setStyleSheet(edit_style)
         self.miktar_edit.setValidator(QRegularExpressionValidator(QRegularExpression(r"[0-9\.,]*")))
@@ -2202,7 +2202,7 @@ class BulkEditDialog(QDialog):
         self.malzeme_edit = QTextEdit(); self.malzeme_edit.setFixedHeight(80); self.malzeme_edit.setEnabled(False); self.malzeme_edit.setStyleSheet(edit_style)
         self.cb_update_malzeme.toggled.connect(self.malzeme_edit.setEnabled)
         form_layout.addWidget(self.cb_update_malzeme, 5, 0); form_layout.addWidget(self.malzeme_edit, 5, 1)
-
+        
         self.cb_update_tutar = QCheckBox("Tutarı Güncelle:")
         self.tutar_edit = QLineEdit(); self.tutar_edit.setEnabled(False); self.tutar_edit.setStyleSheet(edit_style)
         self.tutar_edit.setValidator(QRegularExpressionValidator(QRegularExpression(r"[0-9\.,]*")))
@@ -2232,18 +2232,18 @@ class BulkEditDialog(QDialog):
 
         self.status_checks = {}
         steps = [
-            ("1. Ambar Teslimi Gerçekleşti", 7), ("2. Heyet Başkanına Haber Verildi", 19),
+            ("1. Ambar Teslimi Gerçekleşti", 7), ("2. Heyet Başkanına Haber Verildi", 19), 
             ("3. Testler Başladı", 8), ("4. Test Sonuçları Geldi", 9),
             ("5. Kabul Raporu imzada", 10), ("6. Kabul Yapıldı", 11), ("7. Ödeme Belgesi Oluşturuldu", 13)
         ]
 
-        self.cb_update_test_start = QCheckBox("Test Laboratuvarı:___")
+        self.cb_update_test_start = QCheckBox("Test Laboratuvarı Bilgisi: ")
         self.test_start_bulk_edit = MultiSelectComboBox()
         self.test_start_bulk_edit.add_labs(get_labs())
         self.test_start_bulk_edit.setEnabled(False); self.test_start_bulk_edit.setStyleSheet(edit_style); self.test_start_bulk_edit.setFixedWidth(250)
         self.cb_update_test_start.toggled.connect(self.test_start_bulk_edit.setEnabled)
 
-        self.cb_update_test_result = QCheckBox("Sonuç Laboratuvarı:_")
+        self.cb_update_test_result = QCheckBox("Sonuç Laboratuvarı Bilgisi: ")
         self.test_result_bulk_edit = MultiSelectComboBox()
         self.test_result_bulk_edit.add_labs(get_labs())
         self.test_result_bulk_edit.setEnabled(False); self.test_result_bulk_edit.setStyleSheet(edit_style); self.test_result_bulk_edit.setFixedWidth(250)
@@ -2280,7 +2280,7 @@ class BulkEditDialog(QDialog):
         scroll_adv = QScrollArea(); scroll_adv.setWidgetResizable(True)
         scroll_adv_content = QWidget(); scroll_adv_layout = QVBoxLayout(scroll_adv_content)
         adv_grid = QGridLayout()
-
+        
         adv_fields = [
             ("cb_update_turu", "turu_edit", "İhale Türü:"),
             ("cb_update_usulu", "usulu_edit", "İhale Usulü:"),
@@ -2299,7 +2299,7 @@ class BulkEditDialog(QDialog):
                 edit = QDateEdit(); edit.setCalendarPopup(True); edit.setDate(QDate.currentDate())
                 if edit_name == "ise_baslama_edit" and hasattr(self, "sozlesme_edit"):
                     edit.setDate(self.sozlesme_edit.date().addDays(1))
-            else:
+            else: 
                 edit = QLineEdit()
                 # Auto-complete for Turu and Usulu in Bulk Edit
                 if "turu_edit" == edit_name:
@@ -2316,7 +2316,7 @@ class BulkEditDialog(QDialog):
                         completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
                         completer.setFilterMode(Qt.MatchFlag.MatchContains)
                         edit.setCompleter(completer)
-
+            
             edit.setEnabled(False); edit.setStyleSheet(edit_style)
             cb.toggled.connect(edit.setEnabled)
             setattr(self, cb_name, cb); setattr(self, edit_name, edit)
@@ -2337,10 +2337,10 @@ class BulkEditDialog(QDialog):
         """Sayı yazılırken binlik ayraç ekleyen ve numerik formatı koruyan fonksiyon."""
         if not text:
             return
-
+            
         cursor_pos = edit_widget.cursorPosition()
         old_len = len(text)
-
+        
         # Sadece sayıları ve virgülü koru
         clean_text = text.replace('.', '')
         if ',' in clean_text:
@@ -2350,7 +2350,7 @@ class BulkEditDialog(QDialog):
         else:
             integer_part = clean_text
             decimal_part = ""
-
+            
         if not integer_part and not decimal_part:
             return
 
@@ -2359,19 +2359,19 @@ class BulkEditDialog(QDialog):
             if integer_part.lstrip('-').isdigit():
                 is_negative = integer_part.startswith('-')
                 val = integer_part.lstrip('-')
-
+                
                 # Sondan başlayarak her 3 hane arasına nokta koy
                 rev_val = val[::-1]
                 groups = [rev_val[i:i+3] for i in range(0, len(rev_val), 3)]
                 formatted_int = ".".join(groups)[::-1]
                 if is_negative: formatted_int = "-" + formatted_int
-
+                
                 new_text = formatted_int + decimal_part
-
+                
                 edit_widget.blockSignals(True)
                 edit_widget.setText(new_text)
                 edit_widget.blockSignals(False)
-
+                
                 # Kursör pozisyonunu ayarla
                 new_len = len(new_text)
                 new_pos = cursor_pos + (new_len - old_len)
@@ -2392,7 +2392,7 @@ class BulkEditDialog(QDialog):
 
         try:
             changes_summary = []
-
+            
             do_ikn = self.cb_update_ikn.isChecked()
             new_ikn = self.ikn_edit.text() if do_ikn else None
             if do_ikn: changes_summary.append("IKN")
@@ -2404,29 +2404,29 @@ class BulkEditDialog(QDialog):
             do_ihale = self.cb_update_ihale.isChecked()
             new_ihale = self.ihale_edit.toPlainText() if do_ihale else None
             if do_ihale: changes_summary.append("İhale Adı")
-
+            
             do_sozlesme = self.cb_update_sozlesme.isChecked()
             new_sozlesme_qdate = self.sozlesme_edit.date()
             new_sozlesme_dt = datetime(new_sozlesme_qdate.year(), new_sozlesme_qdate.month(), new_sozlesme_qdate.day())
             new_sozlesme_str = new_sozlesme_dt.strftime("%Y-%m-%d")
             if do_sozlesme: changes_summary.append("Sözleşme Tarihi & Bağlı Teslim Tarihleri")
-
+            
             do_miktar = self.cb_update_miktar.isChecked()
             new_miktar = self.miktar_edit.text() if do_miktar else None
             if do_miktar: changes_summary.append("Miktar")
-
+            
             do_malzeme = self.cb_update_malzeme.isChecked()
             new_malzeme = self.malzeme_edit.toPlainText() if do_malzeme else None
             if do_malzeme: changes_summary.append("Malzeme Detayı")
-
+            
             do_tutar = self.cb_update_tutar.isChecked()
             new_tutar = parse_money(self.tutar_edit.text()) if do_tutar else None
             if do_tutar: changes_summary.append("Tutar")
-
+            
             do_aciklama = self.cb_update_aciklama.isChecked()
             new_aciklama = self.aciklama_edit.toPlainText() if do_aciklama else None
             if do_aciklama: changes_summary.append("Açıklama")
-
+            
             do_test_start = self.cb_update_test_start.isChecked()
             new_test_start = self.test_start_bulk_edit.get_checked_items() if do_test_start else None
             if do_test_start: changes_summary.append("Testler Başladı Detay")
@@ -2434,7 +2434,7 @@ class BulkEditDialog(QDialog):
             do_test_result = self.cb_update_test_result.isChecked()
             new_test_result = self.test_result_bulk_edit.get_checked_items() if do_test_result else None
             if do_test_result: changes_summary.append("Test Sonuçları Geldi Detay")
-
+            
             status_updates = {}
             for text, cb in self.status_checks.items():
                 state = cb.checkState()
@@ -2444,7 +2444,7 @@ class BulkEditDialog(QDialog):
                 elif state == Qt.CheckState.Unchecked:
                     status_updates[text] = 0.0
                     changes_summary.append(f"{text} (○)")
-
+            
             # Gelişmiş Alanların Değişiklik Kontrolü
             if self.cb_update_turu.isChecked(): changes_summary.append("İhale Türü")
             if self.cb_update_usulu.isChecked(): changes_summary.append("İhale Usulü")
@@ -2455,7 +2455,7 @@ class BulkEditDialog(QDialog):
             if self.cb_update_cari.isChecked(): changes_summary.append("Cari No")
             if self.cb_update_proje.isChecked(): changes_summary.append("Proje No")
             if self.cb_update_kart.isChecked(): changes_summary.append("Kart No")
-
+                    
             if not changes_summary:
                 QMessageBox.warning(self, "Uyarı", "Hiçbir değişiklik seçilmedi.")
                 return
@@ -2466,11 +2466,11 @@ class BulkEditDialog(QDialog):
 
             for r in self.records:
                 rowid = r[0]
-
+                
                 if do_ikn: update_record(rowid, "IKN", new_ikn)
                 if do_firma: update_record(rowid, "Yuklenici Firma", new_firma)
                 if do_ihale: update_record(rowid, "Ihale Adi", new_ihale)
-
+                
                 if do_sozlesme:
                     old_sozlesme_str = str(r[17]) if len(r) > 17 and r[17] else ""
                     if old_sozlesme_str:
@@ -2498,7 +2498,7 @@ class BulkEditDialog(QDialog):
                 if self.cb_update_turu.isChecked(): update_record(rowid, "Ihale Turu", self.turu_edit.text())
                 if self.cb_update_usulu.isChecked(): update_record(rowid, "Ihale Usulu", self.usulu_edit.text())
                 if self.cb_update_yak_maliyet.isChecked(): update_record(rowid, "Yak. Maliyet", self.yak_maliyet_edit.text())
-                if self.cb_update_isin_suresi.isChecked():
+                if self.cb_update_isin_suresi.isChecked(): 
                     update_record(rowid, "Isin Suresi", self.isin_suresi_edit.text())
                 else:
                     # Otomatik İşin Süresi Hesaplaması
@@ -2512,16 +2512,16 @@ class BulkEditDialog(QDialog):
                                 if delta != 0 and final_teslim_str:
                                     old_tes_dt = datetime.strptime(final_teslim_str, "%Y-%m-%d")
                                     final_teslim_str = (old_tes_dt + timedelta(days=delta)).strftime("%Y-%m-%d")
-
+                        
                         final_start_str = str(r[21])[:10] if len(r) > 21 and r[21] else ""
                         if self.cb_update_ise_baslama.isChecked():
                             final_start_str = self.ise_baslama_edit.date().toString("yyyy-MM-dd")
-
+                            
                         if final_teslim_str and final_start_str:
                             start_dt = datetime.strptime(final_start_str, "%Y-%m-%d")
                             end_dt = datetime.strptime(final_teslim_str, "%Y-%m-%d")
                             calc_dur = (end_dt - start_dt).days + 1
-
+                            
                             old_dur = str(r[22]) if len(r) > 22 and r[22] else ""
                             if old_dur != f"{calc_dur} Gün":
                                 update_record(rowid, "Isin Suresi", f"{calc_dur} Gün")
@@ -2532,20 +2532,20 @@ class BulkEditDialog(QDialog):
                 if self.cb_update_cari.isChecked(): update_record(rowid, "Cari No", self.cari_edit.text())
                 if self.cb_update_proje.isChecked(): update_record(rowid, "Proje No", self.proje_edit.text())
                 if self.cb_update_kart.isChecked(): update_record(rowid, "Kart No", self.kart_edit.text())
-
+                
                 for state_text, state_val in status_updates.items():
                     db_col = COLUMN_MAPPING.get(state_text, state_text)
                     update_record(rowid, db_col, state_val)
-
+                
                 update_record(rowid, "SonGuncelleme", audit_log)
-
+                
                 ihale_adi = str(r[3])
                 parti_no = str(r[4])
                 updated_details.append(f"{ihale_adi} (Parti: {parti_no})")
-
+                
             log_desc = f"Alanlar ({', '.join(changes_summary)}) | Toplam {len(self.records)} Kayıt: " + ", ".join(updated_details)
             log_action("Toplu Gelişmiş Düzenleme", log_desc)
-
+            
             QMessageBox.information(self, "Başarılı", f"Seçili {len(self.records)} kayıt başarıyla güncellendi.")
             self.accept()
         except Exception as e:
@@ -2576,7 +2576,7 @@ class ClickableCard(QFrame):
     def contextMenuEvent(self, event):
         menu = QtWidgets.QMenu(self)
         bulk_edit_action = menu.addAction("📦 Bu İhalenin Tüm Partilerini Topluca Düzenle")
-
+        
         action = menu.exec(event.globalPos())
         if action == bulk_edit_action:
             self.open_bulk_edit_for_tender()
@@ -2585,14 +2585,14 @@ class ClickableCard(QFrame):
         # Bu ihaleye ait (aynı IKN ve Firma) tüm kayıtları DB'den çek
         ikn = self.record[1]
         firma = self.record[2]
-
+        
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute("SELECT rowid, * FROM data WHERE IKN=? AND `Yuklenici Firma`=?", (ikn, firma))
             all_parts = cursor.fetchall()
             conn.close()
-
+            
             if all_parts:
                 dialog = BulkEditDialog(all_parts, self.parent_summary)
                 if dialog.exec():
@@ -2610,17 +2610,17 @@ class SummaryWidget(QWidget):
         self.parent_window = parent
         self.all_summary_data = []
         self.setup_ui()
-
+        
     def setup_ui(self):
         layout = QVBoxLayout(self)
-
+        
         # Üst Başlık ve Filtre Paneli
         header_layout = QHBoxLayout()
         title = QLabel("Yakın Tarihli Parti Bilgileri")
         title.setStyleSheet("font-size: 18px; font-weight: bold; color: #5e35b1; padding: 5px;")
         header_layout.addWidget(title)
         header_layout.addStretch()
-
+        
         # Filtre Elemanları
         self.cb_firm = QComboBox()
         self.cb_firm.setView(QListView())
@@ -2628,14 +2628,14 @@ class SummaryWidget(QWidget):
         self.cb_firm.setMinimumWidth(150)
         self.cb_firm.addItem("Tümü")
         self.cb_firm.currentTextChanged.connect(self.firm_changed)
-
+        
         self.cb_tender = QComboBox()
         self.cb_tender.setView(QListView())
         self.cb_tender.setItemDelegate(DropdownDelegate())
         self.cb_tender.setMinimumWidth(150)
         self.cb_tender.addItem("Tümü")
         self.cb_tender.currentTextChanged.connect(self.apply_filters)
-
+        
         self.cb_sort = QComboBox()
         self.cb_sort.setView(QListView())
         self.cb_sort.setItemDelegate(DropdownDelegate())
@@ -2651,7 +2651,7 @@ class SummaryWidget(QWidget):
         self.btn_show_all.setObjectName("SecondaryBtn") # Başlangıçta gri (pasif)
         self.btn_show_all.setEnabled(False)
         self.btn_show_all.clicked.connect(self.refresh_summary)
-
+        
         header_layout.addWidget(QLabel("Sıralama:"))
         header_layout.addWidget(self.cb_sort)
         header_layout.addWidget(QLabel("Firma:"))
@@ -2660,16 +2660,16 @@ class SummaryWidget(QWidget):
         header_layout.addWidget(self.cb_tender)
         header_layout.addWidget(btn_clr)
         header_layout.addWidget(self.btn_show_all)
-
+        
         layout.addLayout(header_layout)
 
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
         container = QWidget(); self.cards_layout = QVBoxLayout(container)
         self.cards_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         scroll.setWidget(container); layout.addWidget(scroll)
-
+        
         self.refresh_summary()
-
+        
     def refresh_summary(self):
         show_all = self.btn_show_all.isChecked()
         self.all_summary_data = get_summary_data(show_all=show_all)
@@ -2680,15 +2680,15 @@ class SummaryWidget(QWidget):
         self.cb_firm.blockSignals(True)
         self.cb_firm.clear()
         self.cb_firm.addItem("Tümü")
-
+        
         firms = sorted(list(set(str(r[2]) for r in self.all_summary_data)), key=tr_key)
         self.cb_firm.addItems(firms)
-
+        
         if current_firm in firms:
             self.cb_firm.setCurrentText(current_firm)
         else:
             self.cb_firm.setCurrentIndex(0)
-
+            
         self.cb_firm.blockSignals(False)
         self.firm_changed()
 
@@ -2697,16 +2697,16 @@ class SummaryWidget(QWidget):
         self.cb_tender.blockSignals(True)
         self.cb_tender.clear()
         self.cb_tender.addItem("Tümü")
-
+        
         firm = self.cb_firm.currentText()
         tenders = sorted(list(set(str(r[3]) for r in self.all_summary_data if firm == "Tümü" or str(r[2]) == firm)), key=tr_key)
         self.cb_tender.addItems(tenders)
-
+        
         if current_tender in tenders:
             self.cb_tender.setCurrentText(current_tender)
         else:
             self.cb_tender.setCurrentIndex(0)
-
+            
         self.cb_tender.blockSignals(False)
         self.apply_filters()
 
@@ -2714,7 +2714,7 @@ class SummaryWidget(QWidget):
         # Yüklenici ya da iş seçilirse "Tümünü Göster" butonunu aktif et ve mavi yap
         is_filtered = (self.cb_firm.currentIndex() > 0 or self.cb_tender.currentIndex() > 0)
         self.btn_show_all.setEnabled(is_filtered)
-
+        
         # Stil güncelleme: Aktifse mavi (default), pasifse gri (SecondaryBtn)
         self.btn_show_all.setObjectName("" if is_filtered else "SecondaryBtn")
         self.btn_show_all.style().unpolish(self.btn_show_all)
@@ -2729,15 +2729,15 @@ class SummaryWidget(QWidget):
         while self.cards_layout.count():
             item = self.cards_layout.takeAt(0)
             if item.widget(): item.widget().deleteLater()
-
+            
         f = self.cb_firm.currentText()
         t = self.cb_tender.currentText()
         s = self.cb_sort.currentText()
-
-        filtered = [r for r in self.all_summary_data if
-                    (f == "Tümü" or str(r[2]) == f) and
+        
+        filtered = [r for r in self.all_summary_data if 
+                    (f == "Tümü" or str(r[2]) == f) and 
                     (t == "Tümü" or str(r[3]) == t)]
-
+                    
         # Sorting Logic
         if s == "Tarihe Göre":
             # Index 5 is 'Parti Son Teslim Tarihi'
@@ -2748,7 +2748,7 @@ class SummaryWidget(QWidget):
         elif s == "İhale Adına Göre":
             # Index 3 is 'Ihale Adi'
             filtered.sort(key=lambda x: str(x[3]).lower())
-
+        
         if not filtered:
             empty_lbl = QLabel("Kriterlere uygun bekleyen teslimat bulunmuyor. 🔍" if self.all_summary_data else "Bekleyen teslimat bulunmuyor. 🎉")
             empty_lbl.setAlignment(Qt.AlignCenter)
@@ -2764,31 +2764,31 @@ class SummaryWidget(QWidget):
         self.cb_tender.setCurrentIndex(0)
         self.cb_sort.setCurrentIndex(0)
         self.apply_filters()
-
+            
     def create_card(self, record):
         is_completed = (len(record) > 11 and record[11] == 1.0)
         date_color = get_date_color(record[5], is_completed)
         is_dark = self.parent_window.is_dark_mode if self.parent_window else False
-
+        
         bg_color = "#475569" if is_dark else "white"
         border_color = date_color if date_color else ("#64748b" if is_dark else "#e2e8f0")
         text_color = "#f8fafc" if is_dark else "#1e293b"
         sub_text_color = "#94a3b8" if is_dark else "#64748b"
-
+        
         main_card = QFrame()
         main_card.setObjectName("Card")
         main_card.setStyleSheet(f"""
             #Card {{
-                background-color: {bg_color};
-                border: 2px solid {border_color};
-                border-radius: 12px;
+                background-color: {bg_color}; 
+                border: 2px solid {border_color}; 
+                border-radius: 12px; 
                 margin: 5px 10px;
             }}
             #Card:hover {{
                 border: 2px solid #6366f1;
             }}
         """)
-
+        
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(15)
         shadow.setXOffset(0)
@@ -2812,7 +2812,7 @@ class SummaryWidget(QWidget):
         ikn_style = f"background-color: {ikn_bg_color}; border-radius: 4px; padding: 2px;"
         ikn_lbl.setStyleSheet(f"font-weight: bold; color: {('#818cf8' if is_dark else '#6366f1')}; font-size: 16px; {ikn_style}")
         h_head.addWidget(ikn_lbl)
-
+        
         # Sözleşme Tarihi bilgisini ekle
         sozlesme_raw = str(record[17])[:10] if len(record) > 17 and record[17] else "-"
         soz_tarih_tr = format_date_tr(sozlesme_raw) if sozlesme_raw != "-" else "-"
@@ -2820,12 +2820,12 @@ class SummaryWidget(QWidget):
         sozlesme_lbl.setStyleSheet(f"font-weight: bold; color: {sub_text_color}; font-size: 13px; {ikn_style}")
         h_head.addSpacing(5)
         h_head.addWidget(sozlesme_lbl)
-
+        
         if date_color:
             status_tag = QLabel("⚠️ KABUL İŞLEMİ TAMAMLANMADI" if date_color == "#ef4444" else "⏳ TESLİM SÜRESİ YAKLAŞIYOR")
             status_tag.setStyleSheet(f"color: white; background-color: {date_color}; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;")
             h_head.addWidget(status_tag)
-
+            
         h_head.addStretch()
         top_layout.addLayout(h_head)
 
@@ -2835,7 +2835,7 @@ class SummaryWidget(QWidget):
         title_style = f"background-color: {title_bg_color}; border-radius: 6px; padding: 5px;"
         title_lbl.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {text_color}; {title_style}")
         top_layout.addWidget(title_lbl)
-
+        
         info_layout = QHBoxLayout()
         firma_lbl = QLabel(f"🏢 {record[2]}")
         miktar_val = str(record[16]) if len(record) > 16 and record[16] else "-"
@@ -2844,7 +2844,7 @@ class SummaryWidget(QWidget):
         parti_lbl = QLabel(f"📦 Parti: {record[4]}")
         tarih_val = format_date_tr(record[5]) if record[5] else "-"
         tarih_lbl = QLabel(f"📅 {tarih_val}")
-
+        
         # İşin Süresi Hesapla
         dur_str = "-"
         if record[5] and len(record) > 26 and record[26]:
@@ -2863,7 +2863,7 @@ class SummaryWidget(QWidget):
             info_layout.addWidget(lbl)
             if lbl != duration_lbl:
                 info_layout.addSpacing(10)
-
+        
         info_layout.addStretch()
         top_layout.addLayout(info_layout)
         main_layout.addWidget(top_widget)
@@ -2877,17 +2877,17 @@ class SummaryWidget(QWidget):
         status_box = QFrame()
         status_box.setStyleSheet(f"background-color: {('#1e293b' if is_dark else 'white')}; border-radius: 8px; padding: 10px;")
         status_layout = QVBoxLayout(status_box)
-
+        
         row_steps = QHBoxLayout()
         row_steps.setSpacing(15)
-
-        steps = [("Ambar Teslimi Gerçekleşti", 7), ("Heyet Başkanına Haber Verildi", 19),
+        
+        steps = [("Ambar Teslimi Gerçekleşti", 7), ("Heyet Başkanına Haber Verildi", 19), 
                  ("Testler Başladı", 8), ("Test Sonuçları Geldi", 9),
                  ("Kabul Raporu imzada", 10), ("Kabul Yapıldı", 11), ("Ödeme Belgesi Oluşturuldu", 13)]
-
+        
         for text, idx in steps:
             is_checked = (idx < len(record) and record[idx] == 1.0)
-
+            
             # Detay bilgisini ekle
             display_text = text
             if text == "Testler Başladı":
@@ -2904,10 +2904,10 @@ class SummaryWidget(QWidget):
             color = ("#4ade80" if is_dark else "#16a34a") if is_checked else ("#94a3b8" if is_dark else "#64748b")
             lbl.setStyleSheet(f"font-size: 12px; font-weight: bold; color: {color};")
             row_steps.addWidget(lbl)
-
+        
         row_steps.addStretch()
         status_layout.addLayout(row_steps)
-
+        
         desc = record[14] if len(record) > 14 and record[14] else ""
         if desc:
             d_lbl = QLabel(f"📝 {desc}")
@@ -2915,7 +2915,7 @@ class SummaryWidget(QWidget):
             d_border = "#334155" if is_dark else "#e2e8f0"
             d_lbl.setStyleSheet(f"color: {d_color}; font-size: 14px; border-top: 1px solid {d_border}; margin-top: 5px; padding-top: 5px;")
             status_layout.addWidget(d_lbl)
-
+        
         bottom_layout.addWidget(status_box)
 
         last_upd_val = str(record[15]) if len(record) > 15 and record[15] else ""
@@ -2941,16 +2941,16 @@ class TenderWidget(QWidget):
         self.parent_window = parent
         self.current_status_filter = "all" # all, active, completed
         self.setup_ui()
-
+        
     def setup_ui(self):
         layout = QVBoxLayout(self)
-
+        
         # --- FILTER BUTTONS ---
         btn_layout = QHBoxLayout()
         self.btn_all = QPushButton("Tüm İşler")
         self.btn_active = QPushButton("Devam Edenler")
         self.btn_completed = QPushButton("Tamamlananlar")
-
+        
         for btn in [self.btn_all, self.btn_active, self.btn_completed]:
             btn.setCheckable(True)
             btn.setStyleSheet("""
@@ -2960,7 +2960,7 @@ class TenderWidget(QWidget):
                 QPushButton:checked:hover { background-color: #4f46e5; }
             """)
             btn_layout.addWidget(btn)
-
+        
         btn_layout.addSpacing(10)
         self.btn_export = QPushButton("📊 Verileri CSV Olarak Dışa Aktar")
         self.btn_export.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -2969,21 +2969,21 @@ class TenderWidget(QWidget):
         btn_layout.addWidget(self.btn_export)
 
         btn_layout.addStretch()
-
+        
         self.total_label = QLabel("<b>GENEL TOPLAM: 0,00 TL</b>")
         is_dark = self.parent_window.is_dark_mode if self.parent_window else False
         lbl_bg = "#1e293b" if is_dark else "#f1f5f9"
         self.total_label.setStyleSheet(f"font-size: 14px; color: #6366f1; background-color: {lbl_bg}; padding: 5px 12px; border-radius: 6px; border: 1px solid #6366f1;")
         btn_layout.addWidget(self.total_label)
-
+        
         btn_layout.addSpacing(10)
-
+        
         self.remaining_total_label = QLabel("<b>KALAN TOPLAM: 0,00 TL</b>")
         self.remaining_total_label.setStyleSheet(f"font-size: 14px; color: #ef4444; background-color: {lbl_bg}; padding: 5px 12px; border-radius: 6px; border: 1px solid #ef4444;")
         btn_layout.addWidget(self.remaining_total_label)
 
         layout.addLayout(btn_layout)
-
+        
         self.btn_all.setChecked(True)
         self.btn_all.clicked.connect(lambda: self.set_status_filter("all"))
         self.btn_active.clicked.connect(lambda: self.set_status_filter("active"))
@@ -2998,32 +2998,32 @@ class TenderWidget(QWidget):
         self.search_edit.setPlaceholderText("İKN, Firma veya İhale Adı ile ara...")
         self.search_edit.textChanged.connect(self.refresh_data)
         search_layout.addWidget(self.search_edit, stretch=1)
-
+        
         btn_clear = QPushButton("Temizle")
         btn_clear.clicked.connect(self.clear_search)
         search_layout.addWidget(btn_clear)
-
+        
         layout.addLayout(search_layout)
         layout.addSpacing(10)
 
         # Splitter creates a resizable divider between two tables
         splitter = QSplitter(Qt.Orientation.Vertical)
         layout.addWidget(splitter)
-
+        
         # --- TOP PANEL: TENDER LIST ---
         top_widget = QWidget()
         top_layout = QVBoxLayout(top_widget)
         top_layout.setContentsMargins(0, 0, 0, 10)
-
+        
         title_lbl = QLabel("📁 Sözleşme Listesi (Detayları görmek için bir satır seçin)")
         title_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #5e35b1;")
         top_layout.addWidget(title_lbl)
-
+        
         self.tender_table = QTableWidget()
         self.tender_table.setAlternatingRowColors(True)
         self.tender_table.setColumnCount(11)
         self.tender_table.setHorizontalHeaderLabels([
-            "IKN", "Firma", "İhale Adı", "Sözleşme Tarihi", "İşe Başlama", "İş Sonu",
+            "IKN", "Firma", "İhale Adı", "Sözleşme Tarihi", "İşe Başlama", "İş Sonu", 
             "İşin Süresi", "Yak. Maliyet", "Sözleşme Tutarı", "Toplam Parti", "Kalan Parti"
         ])
         self.tender_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -3033,18 +3033,18 @@ class TenderWidget(QWidget):
         self.tender_table.setWordWrap(True)
         self.tender_table.setItemDelegate(WordWrapDelegate(2, self.tender_table))
         self.tender_table.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollMode.ScrollPerPixel)
-
+        
         # Sağ tık menüsü ayarları
         self.tender_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tender_table.customContextMenuRequested.connect(self.show_tender_context_menu)
-
+        
         # Başlangıç Boyutlandırma
         self.tender_table.resizeColumnsToContents()
-
+        
         # Firma sütununu (index 1) mevcut halinin 4 katı yap
         firm_w = self.tender_table.columnWidth(1)
         self.tender_table.setColumnWidth(1, firm_w * 4)
-
+        
         # IKN sütununun (index 0) tam göründüğünden emin ol
         if self.tender_table.columnWidth(0) < 120:
             self.tender_table.setColumnWidth(0, 120)
@@ -3054,23 +3054,23 @@ class TenderWidget(QWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive)
         self.tender_table.setColumnWidth(6, 100)
-
+        
         # Sadece Firma (1) ve İhale Adı (2) sütunları kaydırılsın
         self.tender_table.setItemDelegate(WordWrapDelegate([1, 2], self.tender_table))
-
+        
         self.tender_table.setSortingEnabled(True) # Başlıklara tıklayarak sıralamayı aç
-
+        
         top_layout.addWidget(self.tender_table)
         splitter.addWidget(top_widget)
-
+        
         # --- BOTTOM PANEL: PART DETAILS ---
         bottom_widget = QWidget()
         bottom_layout = QVBoxLayout(bottom_widget)
         bottom_layout.setContentsMargins(0, 10, 0, 0)
-
+        
         detail_lbl = QLabel("📦 Seçili Sözleşmenin Parti Bilgileri")
         detail_lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #5e35b1;")
-
+        
         h_detail = QHBoxLayout()
         h_detail.addWidget(detail_lbl)
         h_detail.addStretch()
@@ -3080,13 +3080,13 @@ class TenderWidget(QWidget):
         self.detail_total_label.setStyleSheet(f"font-size: 13px; color: #ef4444; background-color: {lbl_bg}; padding: 4px 10px; border-radius: 4px; border: 1px solid #ef4444;")
         h_detail.addWidget(self.detail_total_label)
         bottom_layout.addLayout(h_detail)
-
+        
         self.part_table = QTableWidget()
         self.part_table.setAlternatingRowColors(True)
         self.part_table.setColumnCount(6)
         self.part_table.setHorizontalHeaderLabels(["Parti No", "Teslim Tarihi", "Miktar", "Tutar", "Durum", "Açıklama"])
         self.part_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-
+        
         header_part = self.part_table.horizontalHeader()
         header_part.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.part_table.setColumnWidth(0, 80)
@@ -3096,10 +3096,10 @@ class TenderWidget(QWidget):
         self.part_table.setColumnWidth(4, 100)
         self.part_table.setColumnWidth(5, 250)
         self.part_table.setSortingEnabled(True)
-
+        
         bottom_layout.addWidget(self.part_table)
         splitter.addWidget(bottom_widget)
-
+        
         # Initial sizing
         splitter.setSizes([300, 300])
 
@@ -3110,10 +3110,10 @@ class TenderWidget(QWidget):
         selected_ranges = self.tender_table.selectedRanges()
         if not selected_ranges:
             return
-
+            
         menu = QtWidgets.QMenu(self)
         bulk_edit_action = menu.addAction("📦 Seçili İhaleleri Topluca Düzenle")
-
+        
         action = menu.exec(self.tender_table.viewport().mapToGlobal(pos))
         if action == bulk_edit_action:
             self.run_bulk_edit_for_selected_tenders()
@@ -3124,7 +3124,7 @@ class TenderWidget(QWidget):
         for r in self.tender_table.selectedRanges():
             for row in range(r.topRow(), r.bottomRow() + 1):
                 selected_rows.add(row)
-
+        
         if not selected_rows:
             return
 
@@ -3132,17 +3132,17 @@ class TenderWidget(QWidget):
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-
+            
             for row in selected_rows:
                 ikn = self.tender_table.item(row, 0).text()
                 firma = self.tender_table.item(row, 1).text()
-
+                
                 # Bu ihaleye ait tüm partileri çek
                 cursor.execute("SELECT rowid, * FROM data WHERE IKN=? AND `Yuklenici Firma`=?", (ikn, firma))
                 all_records_to_edit.extend(cursor.fetchall())
-
+                
             conn.close()
-
+            
             if all_records_to_edit:
                 dialog = BulkEditDialog(all_records_to_edit, self)
                 if dialog.exec():
@@ -3153,7 +3153,7 @@ class TenderWidget(QWidget):
                         self.parent_window.summary_widget.refresh_summary()
             else:
                 QMessageBox.information(self, "Bilgi", "Düzenlenecek kayıt bulunamadı.")
-
+                
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"Toplu düzenleme başlatılamadı:\n{e}")
 
@@ -3168,21 +3168,21 @@ class TenderWidget(QWidget):
         path, _ = QFileDialog.getSaveFileName(self, "Verileri CSV Olarak Kaydet", "", "CSV Dosyası (*.csv)")
         if not path:
             return
-
+            
         try:
             with open(path, mode='w', encoding='utf-8-sig', newline='') as file:
                 writer = csv.writer(file, delimiter=';')
-
+                
                 # --- SECTION 1: İHALE LİSTESİ ---
                 writer.writerow(["İHALE LİSTESİ"])
                 headers = [self.tender_table.horizontalHeaderItem(i).text() for i in range(self.tender_table.columnCount())]
                 writer.writerow(headers)
-
+                
                 for row in range(self.tender_table.rowCount()):
-                    row_data = [self.tender_table.item(row, col).text() if self.tender_table.item(row, col) else ""
+                    row_data = [self.tender_table.item(row, col).text() if self.tender_table.item(row, col) else "" 
                                 for col in range(self.tender_table.columnCount())]
                     writer.writerow(row_data)
-
+                
                 # --- SECTION 2: SEÇİLİ İHALE DETAYLARI ---
                 row = self.tender_table.currentRow()
                 if row >= 0:
@@ -3190,12 +3190,12 @@ class TenderWidget(QWidget):
                     writer.writerow(["SEÇİLİ İHALE DETAYLARI"])
                     tender_name = self.tender_table.item(row, 2).text()
                     writer.writerow([f"İhale: {tender_name}"])
-
+                    
                     part_headers = [self.part_table.horizontalHeaderItem(i).text() for i in range(self.part_table.columnCount())]
                     writer.writerow(part_headers)
-
+                    
                     for r in range(self.part_table.rowCount()):
-                        r_data = [self.part_table.item(r, c).text() if self.part_table.item(r, c) else ""
+                        r_data = [self.part_table.item(r, c).text() if self.part_table.item(r, c) else "" 
                                   for c in range(self.part_table.columnCount())]
                         writer.writerow(r_data)
             QMessageBox.information(self, "Başarılı", f"Veriler başarıyla dışa aktarıldı:\n{path}")
@@ -3212,7 +3212,7 @@ class TenderWidget(QWidget):
         count_all = 0
         count_active = 0
         count_completed = 0
-
+        
         filtered_data = []
         for item in all_data:
             # Check completion status of the TENDER (all parts must be completed)
@@ -3222,14 +3222,14 @@ class TenderWidget(QWidget):
                 if not (len(part) > 13 and part[13] == 1.0):
                     is_tender_completed = False
                     break
-
+            
             # Update Stats
             count_all += 1
             if is_tender_completed:
                 count_completed += 1
             else:
                 count_active += 1
-
+            
             # Filter Logic
             status_match = False
             if self.current_status_filter == "all":
@@ -3238,7 +3238,7 @@ class TenderWidget(QWidget):
                 status_match = True
             elif self.current_status_filter == "completed" and is_tender_completed:
                 status_match = True
-
+            
             if status_match:
                 # Metin Filtreleme
                 search_txt = self.search_edit.text().lower()
@@ -3271,19 +3271,19 @@ class TenderWidget(QWidget):
 
         self.tender_table.setRowCount(len(filtered_data))
         self.tender_table.setSortingEnabled(False)
-
+        
         for i, item in enumerate(filtered_data):
             # Column 0: IKN (Store full data in UserRole + 1)
             ikn_item = SortableTableWidgetItem(str(item["ikn"]))
-            ikn_item.setData(Qt.ItemDataRole.UserRole + 1, item)
+            ikn_item.setData(Qt.ItemDataRole.UserRole + 1, item) 
             self.tender_table.setItem(i, 0, ikn_item)
-
+            
             # Column 1: Firma
             self.tender_table.setItem(i, 1, SortableTableWidgetItem(str(item["firma"])))
-
+            
             # Column 2: Ihale Adi - Sortable
             self.tender_table.setItem(i, 2, SortableTableWidgetItem(str(item["ihale"])))
-
+            
             # Column 3: Sözleşme Tarihi
             parts = item["parts"]
             sozlesme_raw = parts[0][17] if len(parts[0]) > 17 else ""
@@ -3318,7 +3318,7 @@ class TenderWidget(QWidget):
                     isin_suresi_days = diff
                     isin_suresi_text = f"{diff} Gün"
                 except: pass
-
+            
             suresi_item = SortableTableWidgetItem(isin_suresi_text)
             suresi_item.setData(Qt.ItemDataRole.UserRole, isin_suresi_days)
             suresi_item.setTextAlignment(Qt.AlignCenter)
@@ -3331,7 +3331,7 @@ class TenderWidget(QWidget):
                     yak_val_num = float(yak_val_raw.replace(".", "").replace(",", "."))
                 else: yak_val_num = float(yak_val_raw)
             except: yak_val_num = 0.0
-
+            
             yak_item = SortableTableWidgetItem(f"{format_money(yak_val_num)} TL")
             yak_item.setData(Qt.ItemDataRole.UserRole, yak_val_num)
             yak_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -3342,7 +3342,7 @@ class TenderWidget(QWidget):
             tutar_item.setData(Qt.ItemDataRole.UserRole, item["total_amount"])
             tutar_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.tender_table.setItem(i, 8, tutar_item)
-
+            
             # Column 9: Toplam Parti Sayisi
             part_count = len(item["parts"])
             p_item = SortableTableWidgetItem(str(part_count))
@@ -3359,13 +3359,13 @@ class TenderWidget(QWidget):
             rem_item.setData(Qt.ItemDataRole.UserRole, remaining)
             rem_item.setTextAlignment(Qt.AlignCenter)
             if remaining > 0:
-                rem_item.setForeground(QColor("#ef4444"))
+                rem_item.setForeground(QColor("#ef4444")) 
                 rem_item.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
             else:
                 is_dark = self.parent_window.is_dark_mode if self.parent_window else False
-                rem_item.setForeground(QColor("#4ade80" if is_dark else "#16a34a"))
+                rem_item.setForeground(QColor("#4ade80" if is_dark else "#16a34a")) 
             self.tender_table.setItem(i, 10, rem_item)
-
+        
         self.tender_table.resizeRowsToContents()
         # Satır yüksekliklerini maksimum 2 satır (60px) olacak şekilde sınırla
         for i in range(self.tender_table.rowCount()):
@@ -3373,7 +3373,7 @@ class TenderWidget(QWidget):
                 self.tender_table.setRowHeight(i, 60)
         self.tender_table.setSortingEnabled(True)
         self.tender_table.blockSignals(False)
-
+        
         # Clear detail view if selection lost/reset or if the selected item is filtered out
         if not self.tender_table.selectedItems():
             self.part_table.setRowCount(0)
@@ -3381,16 +3381,16 @@ class TenderWidget(QWidget):
 
     def on_tender_selected(self):
         row = self.tender_table.currentRow()
-        if row < 0:
+        if row < 0: 
             return
-
+        
         item = self.tender_table.item(row, 0)
         data = item.data(Qt.ItemDataRole.UserRole + 1)
         if not data:
             return
-
+            
         parts = data["parts"]
-
+        
         # Calculate selected tender's remaining balance (Unpaid parts where index 13 is not 1.0)
         selected_remaining = 0.0
         for p in parts:
@@ -3400,19 +3400,19 @@ class TenderWidget(QWidget):
 
         # Sort by Parti No (index 4) safely
         parts.sort(key=lambda x: int(x[4]) if str(x[4]).isdigit() else 0)
-
+        
         self.part_table.setSortingEnabled(False)
         self.part_table.setRowCount(len(parts))
         for i, p in enumerate(parts):
             # p structure indexes: 4=PartiNo, 5=Tarih, 6=Tutar, 11=Kabul, 14=Aciklama
-
+            
             # Parti No
             p_no_val = int(p[4]) if str(p[4]).isdigit() else 0
             p_no_item = SortableTableWidgetItem(str(p[4]))
             p_no_item.setData(Qt.ItemDataRole.UserRole, p_no_val)
             p_no_item.setTextAlignment(Qt.AlignCenter)
             self.part_table.setItem(i, 0, p_no_item)
-
+            
             # Tarih
             tarih_raw = str(p[5])
             tarih_str = format_date_tr(tarih_raw)
@@ -3420,7 +3420,7 @@ class TenderWidget(QWidget):
             tarih_item.setData(Qt.ItemDataRole.UserRole, tarih_raw if tarih_raw else "0000-00-00")
             tarih_item.setTextAlignment(Qt.AlignCenter)
             self.part_table.setItem(i, 1, tarih_item)
-
+            
             # Miktar
             miktar_val_str = str(p[16]) if len(p) > 16 and p[16] else ""
             try:
@@ -3431,7 +3431,7 @@ class TenderWidget(QWidget):
             m_item.setData(Qt.ItemDataRole.UserRole, miktar_num)
             m_item.setTextAlignment(Qt.AlignCenter)
             self.part_table.setItem(i, 2, m_item)
-
+            
             # Tutar
             tutar_val = float(p[6]) if p[6] else 0.0
             tutar_str = format_money(tutar_val) + " TL"
@@ -3439,23 +3439,23 @@ class TenderWidget(QWidget):
             tutar_item.setData(Qt.ItemDataRole.UserRole, tutar_val)
             tutar_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.part_table.setItem(i, 3, tutar_item)
-
+            
             # Durum
             status = "Bekliyor"
             if len(p) > 13 and p[13] == 1.0:
                 status = "Tamamlandı"
-
+            
             status_item = SortableTableWidgetItem(status)
             if status == "Tamamlandı":
                 is_dark = self.parent_window.is_dark_mode if self.parent_window else False
                 status_item.setForeground(QColor("#4ade80" if is_dark else "#16a34a"))
                 status_item.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
             self.part_table.setItem(i, 4, status_item)
-
+            
             # Açıklama
             desc = str(p[14]) if len(p) > 14 and p[14] else ""
             self.part_table.setItem(i, 5, SortableTableWidgetItem(desc))
-
+            
         self.part_table.setSortingEnabled(True)
 
 # --- FIRMA ÖZETLERİ SEKME ---
@@ -3464,21 +3464,21 @@ class FirmSummaryWidget(QWidget):
         super().__init__(parent)
         self.parent_window = parent
         self.setup_ui()
-
+        
     def setup_ui(self):
         layout = QVBoxLayout(self)
-
+        
         # Filter Layout (Search + Year)
         filter_layout = QHBoxLayout()
-
+        
         filter_layout.addWidget(QLabel("🔍 Firma Ara:"))
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText("Firma ismi yazın...")
         self.search_edit.textChanged.connect(self.apply_filter)
         filter_layout.addWidget(self.search_edit)
-
+        
         filter_layout.addSpacing(20)
-
+        
         filter_layout.addWidget(QLabel("📅 Yıl:"))
         self.cb_year = QComboBox()
         self.cb_year.setView(QListView())
@@ -3486,12 +3486,12 @@ class FirmSummaryWidget(QWidget):
         self.cb_year.addItem("Tümü")
         self.cb_year.currentTextChanged.connect(self.refresh_data)
         filter_layout.addWidget(self.cb_year)
-
+        
         filter_layout.addSpacing(10)
         self.btn_clear = QPushButton("Temizle")
         self.btn_clear.clicked.connect(self.clear_filters)
         filter_layout.addWidget(self.btn_clear)
-
+        
         filter_layout.addSpacing(10)
         self.btn_export = QPushButton("📊 Verileri CSV Olarak Dışa Aktar")
         self.btn_export.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -3500,7 +3500,7 @@ class FirmSummaryWidget(QWidget):
         filter_layout.addWidget(self.btn_export)
 
         filter_layout.addStretch()
-
+        
         self.total_label = QLabel("<b>GENEL TOPLAM: 0,00 TL</b>")
         is_dark = self.parent_window.is_dark_mode if self.parent_window else False
         lbl_bg = "#1e293b" if is_dark else "#f1f5f9"
@@ -3508,7 +3508,7 @@ class FirmSummaryWidget(QWidget):
         filter_layout.addWidget(self.total_label)
 
         layout.addLayout(filter_layout)
-
+        
         # Table
         self.table = QTableWidget()
         self.table.setAlternatingRowColors(True)
@@ -3517,26 +3517,26 @@ class FirmSummaryWidget(QWidget):
         self.table.setSortingEnabled(True)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-
+        
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-
+        
         self.table.itemDoubleClicked.connect(self.on_row_double_clicked)
-
+        
         layout.addWidget(self.table)
         self.refresh_data()
 
     def on_row_double_clicked(self, item):
         row = item.row()
         firm_name = self.table.item(row, 0).text()
-
+        
         # Filtreleri kaldırıp tüm veriden çekmek için
         all_tenders = get_aggregated_tender_data()
         firm_tenders = [t for t in all_tenders if t["firma"] == firm_name]
-
+        
         if firm_tenders:
             dialog = FirmDetailDialog(firm_name, firm_tenders, self)
             dialog.exec()
@@ -3547,19 +3547,19 @@ class FirmSummaryWidget(QWidget):
         path, _ = QFileDialog.getSaveFileName(self, "Verileri CSV Olarak Kaydet", "", "CSV Dosyası (*.csv)")
         if not path:
             return
-
+            
         try:
             headers = [self.table.horizontalHeaderItem(i).text() for i in range(self.table.columnCount())]
-
+            
             with open(path, mode='w', encoding='utf-8-sig', newline='') as file:
                 writer = csv.writer(file, delimiter=';')
                 writer.writerow(headers)
-
+                
                 for row in range(self.table.rowCount()):
-                    row_data = [self.table.item(row, col).text() if self.table.item(row, col) else ""
+                    row_data = [self.table.item(row, col).text() if self.table.item(row, col) else "" 
                                 for col in range(self.table.columnCount())]
                     writer.writerow(row_data)
-
+            
             QMessageBox.information(self, "Başarılı", f"Veriler başarıyla dışa aktarıldı:\n{path}")
             log_action("CSV Dışa Aktar (Firma Özetleri)", f"Dosya: {path}")
         except Exception as e:
@@ -3590,36 +3590,36 @@ class FirmSummaryWidget(QWidget):
     def apply_filter(self):
         txt = self.search_edit.text().lower()
         filtered = [f for f in self.all_firms if not txt or txt in f["name"].lower()]
-
+        
         # Update Grand Total
         grand_total = sum(f["volume"] for f in filtered)
         self.total_label.setText(f"<b>GENEL TOPLAM: {format_money(grand_total)} TL</b>")
-
+        
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(filtered))
-
+        
         for i, f in enumerate(filtered):
             # Name
             self.table.setItem(i, 0, QTableWidgetItem(f["name"]))
-
+            
             # Tender Count
             t_item = SortableTableWidgetItem(str(f["tender_count"]))
             t_item.setData(Qt.ItemDataRole.UserRole, f["tender_count"])
             t_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(i, 1, t_item)
-
+            
             # Part Count
             c_item = SortableTableWidgetItem(str(f["part_count"]))
             c_item.setData(Qt.ItemDataRole.UserRole, f["part_count"])
             c_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(i, 2, c_item)
-
+            
             # Total Volume
             v_item = SortableTableWidgetItem(format_money(f["volume"]) + " TL")
             v_item.setData(Qt.ItemDataRole.UserRole, f["volume"])
             v_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(i, 3, v_item)
-
+            
         self.table.setSortingEnabled(True)
 
 # --- ÖZEL TAKVİM BİLEŞENİ ---
@@ -3634,7 +3634,7 @@ class CustomCalendar(QCalendarWidget):
 
     def paintCell(self, painter, rect, date):
         super().paintCell(painter, rect, date)
-
+        
         if date in self.date_counts:
             count = self.date_counts[date]
             if count > 0:
@@ -3642,12 +3642,12 @@ class CustomCalendar(QCalendarWidget):
                 # Badge çizimi
                 badge_size = 18
                 badge_rect = rect.adjusted(rect.width() - badge_size - 2, 2, -2, -(rect.height() - badge_size - 2))
-
+                
                 painter.setRenderHint(QPainter.RenderHint.Antialiasing)
                 painter.setBrush(QBrush(QColor("#6366f1")))
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.drawEllipse(badge_rect)
-
+                
                 painter.setPen(QColor("white"))
                 font = painter.font()
                 font.setPointSize(8)
@@ -3667,30 +3667,30 @@ class CalendarWidget(QWidget):
 
     def setup_ui(self):
         layout = QHBoxLayout(self)
-
+        
         # Sol Panel: Takvim ve Filtreler
         left_panel = QVBoxLayout()
         left_panel.setContentsMargins(10, 10, 10, 10)
-
+        
         title_layout = QHBoxLayout()
         title = QLabel("📅 Teslimat Takvimi")
         title.setStyleSheet("font-size: 18px; font-weight: bold; color: #5e35b1;")
         title_layout.addWidget(title)
-
+        
         title_layout.addStretch()
-
+        
         self.btn_today = QPushButton("🎯 Bugün")
         self.btn_today.setFixedWidth(100)
         self.btn_today.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_today.setStyleSheet("""
-            QPushButton {
+            QPushButton { 
                 background-color: #6366f1; color: white; border-radius: 6px; padding: 5px; font-weight: bold;
             }
             QPushButton:hover { background-color: #4f46e5; }
         """)
         self.btn_today.clicked.connect(self.go_to_today)
         title_layout.addWidget(self.btn_today)
-
+        
         left_panel.addLayout(title_layout)
         left_panel.addSpacing(5)
 
@@ -3699,21 +3699,21 @@ class CalendarWidget(QWidget):
         self.calendar.setGridVisible(True)
         self.calendar.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
         self.calendar.selectionChanged.connect(self.date_selected)
-
+        
         # Takvim boyutunu artır
         self.calendar.setMinimumHeight(450)
         self.calendar.setMinimumWidth(550)
         self.calendar.setMaximumWidth(650)
-
+        
         # Takvim stilini modernleştir
         # Ay/Yıl butonlarını beyaz yapmak için: QToolButton renkleri
         self.calendar.setStyleSheet("""
             QCalendarWidget QWidget { alternate-background-color: #f1f5f9; }
             QCalendarWidget QAbstractItemView:enabled { color: #1e293b; selection-background-color: #6366f1; selection-color: white; }
-            QCalendarWidget QToolButton {
-                color: white;
+            QCalendarWidget QToolButton { 
+                color: white; 
                 background-color: #6366f1;
-                font-weight: bold;
+                font-weight: bold; 
                 border-radius: 4px;
                 margin: 2px;
                 padding: 2px 10px;
@@ -3724,9 +3724,9 @@ class CalendarWidget(QWidget):
             QCalendarWidget QMenu { background-color: white; }
             QCalendarWidget QSpinBox { width: 60px; font-size: 14px; background-color: white; color: #1e293b; }
         """)
-
+        
         left_panel.addWidget(self.calendar)
-
+        
         # Filtreler
         self.filter_box = QFrame()
         self.filter_box.setObjectName("FilterBox")
@@ -3735,7 +3735,7 @@ class CalendarWidget(QWidget):
         box_border = "#334155" if is_dark else "#e2e8f0"
         self.filter_box.setStyleSheet(f"#FilterBox {{ background-color: {box_bg}; border-radius: 8px; border: 1px solid {box_border}; padding: 10px; }}")
         f_layout = QVBoxLayout(self.filter_box)
-
+        
         f_layout.addWidget(QLabel("<b>Görünüm Filtresi:</b>"))
         self.cb_status = QComboBox()
         self.cb_status.setView(QListView())
@@ -3743,10 +3743,10 @@ class CalendarWidget(QWidget):
         self.cb_status.addItems(["Tüm Teslimatlar", "Sadece Bekleyenler", "Sadece Tamamlananlar"])
         self.cb_status.currentTextChanged.connect(self.refresh_data)
         f_layout.addWidget(self.cb_status)
-
+        
         left_panel.addWidget(self.filter_box)
         left_panel.addSpacing(10)
-
+        
         # Aylık Özet
         self.summary_box = QFrame()
         self.summary_box.setObjectName("SummaryBox")
@@ -3755,36 +3755,36 @@ class CalendarWidget(QWidget):
         box_border = "#334155" if is_dark else "#e2e8f0"
         self.summary_box.setStyleSheet(f"#SummaryBox {{ background-color: {box_bg}; border-radius: 8px; border: 1px solid {box_border}; padding: 10px; }}")
         s_layout = QVBoxLayout(self.summary_box)
-
+        
         self.lbl_month_title = QLabel("📊 Aylık Özet")
         self.lbl_month_title.setStyleSheet("font-weight: bold; color: #5e35b1; font-size: 14px;")
         s_layout.addWidget(self.lbl_month_title)
-
+        
         self.lbl_month_total = QLabel("💰 Toplam Tutar: 0,00 TL")
         self.lbl_month_firms = QLabel("🏢 Firma Sayısı: 0")
         self.lbl_month_tenders = QLabel("📋 Toplam İhale: 0")
         self.lbl_month_batches = QLabel("📦 Toplam Parti: 0")
-
+        
         for lbl in [self.lbl_month_total, self.lbl_month_firms, self.lbl_month_tenders, self.lbl_month_batches]:
             lbl.setStyleSheet(f"color: {'#f8fafc' if is_dark else '#1e293b'}; font-size: 13px;")
             s_layout.addWidget(lbl)
-
+            
         left_panel.addWidget(self.summary_box)
         left_panel.addStretch()
-
+        
         # Sayfa (Ay) değiştiğinde özeti güncelle
         self.calendar.currentPageChanged.connect(self.update_monthly_summary)
-
+        
         layout.addLayout(left_panel, stretch=0)
-
+        
         # Sağ Panel: Günlük Detaylar
         right_panel = QVBoxLayout()
         right_panel.setContentsMargins(10, 10, 10, 10)
-
+        
         self.detail_label = QLabel("Seçili Tarihteki İşler")
         self.detail_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #5e35b1;")
         right_panel.addWidget(self.detail_label)
-
+        
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -3793,7 +3793,7 @@ class CalendarWidget(QWidget):
         self.card_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.scroll.setWidget(self.card_container)
         right_panel.addWidget(self.scroll)
-
+        
         layout.addLayout(right_panel, stretch=1)
 
     def go_to_today(self):
@@ -3811,68 +3811,68 @@ class CalendarWidget(QWidget):
         # Şu an gösterilen ay ve yılı al
         year = self.calendar.yearShown()
         month = self.calendar.monthShown()
-
+        
         total_amount = 0.0
         firms = set()
         tenders = set()
         batch_count = 0
-
+        
         filter_mode = self.cb_status.currentText()
-
+        
         for r in self.all_data:
             if not r[5]: continue
-
+            
             # Veritabanındaki tarih: yyyy-mm-dd
             try:
                 qdate = QDate.fromString(r[5][:10], "yyyy-MM-dd")
                 if qdate.year() == year and qdate.month() == month:
                     is_completed = (len(r) > 11 and r[11] == 1.0)
-
+                    
                     if filter_mode == "Sadece Bekleyenler" and is_completed: continue
                     if filter_mode == "Sadece Tamamlananlar" and not is_completed: continue
-
+                    
                     total_amount += parse_money(r[6])
                     firms.add(r[2])
                     tenders.add(r[1]) # IKN
                     batch_count += 1
             except:
                 continue
-
+        
         # UI Güncelleme
         self.lbl_month_total.setText(f"💰 Toplam Tutar: {format_money(str(total_amount))} TL")
         self.lbl_month_firms.setText(f"🏢 Firma Sayısı: {len(firms)}")
         self.lbl_month_tenders.setText(f"📋 Toplam İhale: {len(tenders)}")
         self.lbl_month_batches.setText(f"📦 Toplam Parti: {batch_count}")
-
+        
         # Başlığı gösterilen aya göre güncelle
         tr_months = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
         self.lbl_month_title.setText(f"📊 {tr_months[month]} {year} Özeti")
 
     def update_calendar_styles(self):
         is_dark = self.parent_window.is_dark_mode if self.parent_window else False
-
+        
         # Ana Takvim Stili
         bg_color = "#1e293b" if is_dark else "#ffffff"
         text_color = "#f8fafc" if is_dark else "#1e293b"
         header_bg = "#5e35b1"
         grid_color = "#334155" if is_dark else "#e2e8f0"
         alt_bg = "#334155" if is_dark else "#f1f5f9"
-
+        
         self.calendar.setStyleSheet(f"""
-            QCalendarWidget QWidget {{
-                alternate-background-color: {alt_bg};
+            QCalendarWidget QWidget {{ 
+                alternate-background-color: {alt_bg}; 
                 background-color: {bg_color};
             }}
-            QCalendarWidget QAbstractItemView:enabled {{
-                color: {text_color};
-                selection-background-color: #000000;
-                selection-color: #ffffff;
+            QCalendarWidget QAbstractItemView:enabled {{ 
+                color: {text_color}; 
+                selection-background-color: #000000; 
+                selection-color: #ffffff; 
             }}
             QCalendarWidget QAbstractItemView:disabled {{ color: #475569; }}
-            QCalendarWidget QToolButton {{
-                color: white;
+            QCalendarWidget QToolButton {{ 
+                color: white; 
                 background-color: #6366f1;
-                font-weight: bold;
+                font-weight: bold; 
                 border-radius: 4px;
                 margin: 2px;
                 padding: 2px 10px;
@@ -3882,29 +3882,29 @@ class CalendarWidget(QWidget):
             QCalendarWidget QWidget#qt_calendar_navigationbar {{ background-color: {header_bg}; }}
             QCalendarWidget QMenu {{ background-color: {bg_color}; color: {text_color}; }}
             QCalendarWidget QMenu::item:selected {{ background-color: #6366f1; color: white; }}
-            QCalendarWidget QSpinBox {{
-                width: 120px; font-size: 15px;
+            QCalendarWidget QSpinBox {{ 
+                width: 120px; font-size: 15px; 
                 background-color: {bg_color}; color: {text_color};
                 border: 1px solid {grid_color};
                 selection-background-color: #6366f1;
                 border-radius: 4px;
                 padding-right: 20px; /* Make room for buttons if needed, though they are outside content usually */
             }}
-            QCalendarWidget QSpinBox::up-button {{
-                subcontrol-origin: border;
+            QCalendarWidget QSpinBox::up-button {{ 
+                subcontrol-origin: border; 
                 subcontrol-position: top right;
-                width: 30px;
-                background-color: #6366f1;
+                width: 30px; 
+                background-color: #6366f1; 
                 border-left: 1px solid {grid_color};
-                border-bottom: 1px solid {grid_color};
+                border-bottom: 1px solid {grid_color}; 
                 border-top-right-radius: 4px;
                 image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iMTIiIHZpZXdCb3g9IjAgMCAyNCAyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSZNMTIgOGwtNiA2aDEyeiIgZmlsbD0id2hpdGUiLz48L3N2Zz4=);
             }}
-            QCalendarWidget QSpinBox::down-button {{
-                subcontrol-origin: border;
+            QCalendarWidget QSpinBox::down-button {{ 
+                subcontrol-origin: border; 
                 subcontrol-position: bottom right;
-                width: 30px;
-                background-color: #6366f1;
+                width: 30px; 
+                background-color: #6366f1; 
                 border-left: 1px solid {grid_color};
                 border-top: 1px solid {grid_color};
                 border-bottom-right-radius: 4px;
@@ -3913,39 +3913,39 @@ class CalendarWidget(QWidget):
             QCalendarWidget QSpinBox::up-arrow {{ image: none; width: 0; height: 0; }}
             QCalendarWidget QSpinBox::down-arrow {{ image: none; width: 0; height: 0; }}
         """)
-
+        
         # Kutuları güncelle (Sol Panel)
         box_bg = "#1e293b" if is_dark else "#f8fafc"
         box_border = "#334155" if is_dark else "#e2e8f0"
         self.filter_box.setStyleSheet(f"#FilterBox {{ background-color: {box_bg}; border-radius: 8px; border: 1px solid {box_border}; padding: 10px; }}")
         self.summary_box.setStyleSheet(f"#SummaryBox {{ background-color: {box_bg}; border-radius: 8px; border: 1px solid {box_border}; padding: 10px; }}")
-
+        
         for lbl in [self.lbl_month_total, self.lbl_month_firms, self.lbl_month_tenders, self.lbl_month_batches]:
             lbl.setStyleSheet(f"color: {'#f8fafc' if is_dark else '#1e293b'}; font-size: 13px;")
 
     def highlight_dates(self):
         self.calendar.setDateTextFormat(QDate(), QTextCharFormat())
-
+        
         filter_mode = self.cb_status.currentText()
         is_dark = self.parent_window.is_dark_mode if self.parent_window else False
-
+        
         counts = {}
-
+        
         for r in self.all_data:
             if not r[5]: continue
-
+            
             is_completed = (len(r) > 11 and r[11] == 1.0)
-
+            
             if filter_mode == "Sadece Bekleyenler" and is_completed: continue
             if filter_mode == "Sadece Tamamlananlar" and not is_completed: continue
-
+            
             day_str = r[5][:10]
             qdate = QDate.fromString(day_str, "yyyy-MM-dd")
             if not qdate.isValid(): continue
-
+            
             # Count for badges
             counts[qdate] = counts.get(qdate, 0) + 1
-
+            
             fmt = QTextCharFormat()
             color_str = get_date_color(day_str, is_completed)
             if color_str:
@@ -3957,10 +3957,10 @@ class CalendarWidget(QWidget):
                 else:
                     fmt.setBackground(QColor("#6366f1"))
                 fmt.setForeground(QColor("white"))
-
+            
             fmt.setFontWeight(QFont.Weight.Bold)
             self.calendar.setDateTextFormat(qdate, fmt)
-
+            
         self.calendar.set_date_counts(counts)
 
     def date_selected(self):
@@ -3968,13 +3968,13 @@ class CalendarWidget(QWidget):
         while self.card_layout.count():
             item = self.card_layout.takeAt(0)
             if item.widget(): item.widget().deleteLater()
-
+            
         selected_qdate = self.calendar.selectedDate()
         date_str = selected_qdate.toString("yyyy-MM-dd")
         self.detail_label.setText(f"📅 {selected_qdate.toString('dd.MM.yyyy')} Tarihindeki İşler")
-
+        
         filter_mode = self.cb_status.currentText()
-
+        
         found_data = []
         for r in self.all_data:
             if r[5] and r[5][:10] == date_str:
@@ -3982,7 +3982,7 @@ class CalendarWidget(QWidget):
                 if filter_mode == "Sadece Bekleyenler" and is_completed: continue
                 if filter_mode == "Sadece Tamamlananlar" and not is_completed: continue
                 found_data.append(r)
-
+        
         if found_data:
             for r in found_data:
                 # SummaryWidget'taki create_card fonksiyonunu kullanalım
@@ -4001,10 +4001,10 @@ class DetailWidget(QWidget):
         self.current_status_filter = "all" # all, active, completed
         self.setup_ui()
         self.refresh_data()
-
+        
     def setup_ui(self):
         layout = QVBoxLayout(self)
-
+        
         # Üst Buton Paneli
         top_btn_layout = QHBoxLayout()
         btn_new = QPushButton("➕ Yeni İhale Ekle")
@@ -4036,7 +4036,7 @@ class DetailWidget(QWidget):
         self.btn_all = QPushButton("Tüm İşler")
         self.btn_active = QPushButton("Devam Edenler")
         self.btn_completed = QPushButton("Tamamlananlar")
-
+        
         for btn in [self.btn_all, self.btn_active, self.btn_completed]:
             btn.setCheckable(True)
             btn.setStyleSheet("""
@@ -4046,10 +4046,10 @@ class DetailWidget(QWidget):
                 QPushButton:checked:hover { background-color: #4f46e5; }
             """)
             top_btn_layout.addWidget(btn)
-
+        
         top_btn_layout.addStretch()
         layout.addLayout(top_btn_layout)
-
+        
         self.btn_all.setChecked(True)
         self.btn_all.clicked.connect(lambda: self.set_status_filter("all"))
         self.btn_active.clicked.connect(lambda: self.set_status_filter("active"))
@@ -4059,7 +4059,7 @@ class DetailWidget(QWidget):
         f_panel = QHBoxLayout()
         self.search = QLineEdit(); self.search.setPlaceholderText("Metin ara...")
         btn_clr = QPushButton("Temizle"); btn_clr.clicked.connect(self.clear_filters)
-
+        
         self.cb_date_filter = QCheckBox("Tarih Filtresi:")
         self.date_start = QDateEdit()
         self.date_start.setCalendarPopup(True)
@@ -4068,27 +4068,27 @@ class DetailWidget(QWidget):
         self.date_end.setCalendarPopup(True)
         self.date_end.setDate(QDate.currentDate().addMonths(6))
         self.date_sep_label = QLabel("-")
-
+        
         # Başlangıçta gizli
         self.date_start.setVisible(False)
         self.date_sep_label.setVisible(False)
         self.date_end.setVisible(False)
-
+        
         self.cb_date_filter.stateChanged.connect(self.apply_filters)
         self.cb_date_filter.toggled.connect(self.toggle_date_filter_visibility)
         self.date_start.dateChanged.connect(self.apply_filters)
         self.date_end.dateChanged.connect(self.apply_filters)
-
+        
         self.cb_firm = QComboBox(); self.cb_firm.setView(QListView()); self.cb_firm.setItemDelegate(DropdownDelegate()); self.cb_firm.setMinimumWidth(180); self.cb_firm.currentTextChanged.connect(self.firm_changed)
         self.cb_tender = QComboBox(); self.cb_tender.setView(QListView()); self.cb_tender.setItemDelegate(DropdownDelegate()); self.cb_tender.setMinimumWidth(180); self.cb_tender.currentTextChanged.connect(self.apply_filters)
-
+        
         f_panel.addWidget(QLabel("Ara:")); f_panel.addWidget(self.search, stretch=1); f_panel.addWidget(btn_clr)
         f_panel.addSpacing(15); f_panel.addWidget(self.cb_date_filter)
         f_panel.addWidget(self.date_start); f_panel.addWidget(self.date_sep_label); f_panel.addWidget(self.date_end)
         f_panel.addSpacing(15); f_panel.addWidget(QLabel("Firma:")); f_panel.addWidget(self.cb_firm, stretch=1)
         f_panel.addWidget(QLabel("İhale:")); f_panel.addWidget(self.cb_tender, stretch=1)
         layout.addLayout(f_panel)
-
+        
         self.search.textChanged.connect(self.apply_filters)
         self.table = QTableWidget(); self.table.setColumnCount(30)
         self.table.setAlternatingRowColors(True)
@@ -4096,8 +4096,8 @@ class DetailWidget(QWidget):
             "IKN", "Firma", "İhale Adı", "Sözl. Tarihi", "Parti", "Parti Tarihi",
             "Miktar", "Malzeme Detayı", "Tutar",
             "Ambar", "Bşk. Haber", "Test B.", "Test S.", "Rapor", "Kabul", "Ödeme",
-            "Açıklama", "İhale Türü", "İhale Usulü", "Yak. Maliyet", "İhale Tarihi",
-            "İşe Başlama", "İşin Süresi", "Cari No", "Proje No", "Kart No",
+            "Açıklama", "İhale Türü", "İhale Usulü", "Yak. Maliyet", "İhale Tarihi", 
+            "İşe Başlama", "İşin Süresi", "Cari No", "Proje No", "Kart No", 
             "Test Detay (B)", "Test Detay (S)", "Fatura", "İşlem"
         ])
 
@@ -4119,36 +4119,36 @@ class DetailWidget(QWidget):
         self.table.setColumnWidth(29, 130) # İşlem sütunu
 
         self.table.setSortingEnabled(True)
-
+        
         # Toplu işlem için çoklu seçim ve sağ menü
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_context_menu)
-
+        
         layout.addWidget(self.table)
         # Kaydedilmiş sütun görünürlüğü ayarlarını yükle
         self.load_column_settings()
 
-
+    
     def load_column_settings(self):
         settings = QSettings("IhaleSystem", f"UserPrefs/{CURRENT_USER}")
         # IKN(0), Firma(1), Ihale(2), Parti(4), Termin(5), Miktar(6), Tutar(8), Aciklama(16)
         min_indices = [0, 1, 2, 4, 5, 6, 8, 16]
-
+        
         has_settings = False
         for c in range(self.table.columnCount()):
             if settings.contains(f"column_visible_{c}"):
                 has_settings = True
                 break
-
+        
         # Sütunları gizle/göster
         for col in range(self.table.columnCount()):
             # 'Islem' sütunu (son sütun) her zaman görünür kalsın
             if col == self.table.columnCount() - 1:
                 self.table.setColumnHidden(col, False)
                 continue
-
+                
             if has_settings:
                 if settings.contains(f"column_visible_{col}"):
                     is_visible = settings.value(f"column_visible_{col}", type=bool)
@@ -4168,35 +4168,35 @@ class DetailWidget(QWidget):
         path, _ = QFileDialog.getSaveFileName(self, "Verileri CSV Olarak Kaydet", "", "CSV Dosyası (*.csv)")
         if not path:
             return
-
+            
         try:
             # Table visualization column count minus the "İşlem" column
             col_count = self.table.columnCount() - 1
             headers = [self.table.horizontalHeaderItem(i).text() for i in range(col_count)]
-
+            
             with open(path, mode='w', encoding='utf-8-sig', newline='') as file:
                 writer = csv.writer(file, delimiter=';')
                 writer.writerow(headers)
-
+                
                 for row in range(self.table.rowCount()):
                     row_data = []
                     for col in range(col_count):
                         item = self.table.item(row, col)
                         row_data.append(item.text() if item else "")
                     writer.writerow(row_data)
-
+            
             QMessageBox.information(self, "Başarılı", f"Veriler başarıyla dışa aktarıldı:\n{path}")
             log_action("CSV Dışa Aktar", f"Dosya: {path}")
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"CSV dışa aktarma hatası:\n{e}")
-
+            
     def refresh_data(self):
         # Mevcut seçimleri kaydet
         current_firm = self.cb_firm.currentText()
         current_tender = self.cb_tender.currentText()
-
+        
         self.all_data = fetch_data()
-
+        
         # Dropdownları güncelle (seçimleri koruyarak)
         self.update_firm_dropdown(current_firm, current_tender)
 
@@ -4204,7 +4204,7 @@ class DetailWidget(QWidget):
         # 1. Adım: Durum filtresine göre veriyi daralt
         if self.current_status_filter == "all":
             return self.all_data
-
+        
         filtered = []
         for r in self.all_data:
             # Kabul Yapildi -> index 11
@@ -4218,43 +4218,43 @@ class DetailWidget(QWidget):
     def update_firm_dropdown(self, preserve_firm=None, preserve_tender=None):
         # Eğer dışarıdan belirli bir firma korunmak isteniyorsa onu kullan, yoksa mevcut olana bak
         current = preserve_firm if preserve_firm else self.cb_firm.currentText()
-
+        
         data_source = self.get_status_filtered_data()
-
+        
         self.cb_firm.blockSignals(True)
         self.cb_firm.clear()
         self.cb_firm.addItem("Tümü")
-
+        
         firms = sorted(list(set(str(r[2]) for r in data_source)), key=tr_key)
         self.cb_firm.addItems(firms)
-
+        
         if current in firms:
             self.cb_firm.setCurrentText(current)
         else:
             self.cb_firm.setCurrentIndex(0)
-
+            
         self.cb_firm.blockSignals(False)
         self.firm_changed(preserve_tender)
 
     def firm_changed(self, preserve_tender=None):
         # Eğer dışarıdan belirli bir ihale korunmak isteniyorsa onu kullan, yoksa mevcut olana bak
         current_tender = preserve_tender if preserve_tender else self.cb_tender.currentText()
-
+        
         data_source = self.get_status_filtered_data()
-
+        
         self.cb_tender.blockSignals(True)
         self.cb_tender.clear()
         self.cb_tender.addItem("Tümü")
-
+        
         firm = self.cb_firm.currentText()
-
+        
         # Seçili firmaya göre ihaleleri filtrele
         tenders = sorted(list(set(str(r[3]) for r in data_source if firm == "Tümü" or str(r[2]) == firm)), key=tr_key)
         self.cb_tender.addItems(tenders)
-
+        
         if current_tender in tenders:
             self.cb_tender.setCurrentText(current_tender)
-
+        
         self.cb_tender.blockSignals(False)
         self.apply_filters() # Tabloyu güncelle
 
@@ -4269,11 +4269,11 @@ class DetailWidget(QWidget):
     def apply_filters(self):
         txt = self.search.text().lower()
         f = self.cb_firm.currentText(); t = self.cb_tender.currentText()
-
+        
         use_date_filter = self.cb_date_filter.isChecked()
         d_start = self.date_start.date().toString("yyyy-MM-dd")
         d_end = self.date_end.date().toString("yyyy-MM-dd")
-
+        
         # Filtreleme Mantığı
         filtered = []
         for r in self.all_data:
@@ -4281,34 +4281,34 @@ class DetailWidget(QWidget):
             basic_match = (f == "Tümü" or str(r[2]) == f) and \
                           (t == "Tümü" or str(r[3]) == t) and \
                           (not txt or txt in str(r).lower())
-
+            
             if not basic_match:
                 continue
-
+                
             if use_date_filter:
                 tarih_raw = str(r[5])[:10] if r[5] else ""
                 if not tarih_raw or not (d_start <= tarih_raw <= d_end):
                     continue
-
+                
             # Durum Filtresi (Kabul Yapildi -> index 11)
             is_completed = (len(r) > 11 and r[11] == 1.0)
             if self.current_status_filter == "active" and is_completed:
                 continue
             if self.current_status_filter == "completed" and not is_completed:
                 continue
-
+                
             filtered.append(r)
-
+        
         self.table.setSortingEnabled(False) # Veri eklerken sıralamayı kapat
         self.table.setRowCount(len(filtered))
         for row_idx, r in enumerate(filtered):
             # IKN, Firma, Ihale Adi (Standart String)
-            for i in range(3):
+            for i in range(3): 
                 item = QTableWidgetItem(str(r[i+1]))
                 if i == 0:
                     item.setData(Qt.ItemDataRole.UserRole, r[0])
                 self.table.setItem(row_idx, i, item)
-
+            
             # Sözleşme Tarihi
             sozlesme_raw = str(r[17])[:10] if len(r) > 17 and r[17] else ""
             sozlesme_item = QTableWidgetItem(format_date_tr(sozlesme_raw))
@@ -4320,7 +4320,7 @@ class DetailWidget(QWidget):
             try:
                 parti_val = int(r[4])
             except: pass
-
+            
             parti_item = SortableTableWidgetItem(str(r[4]))
             parti_item.setData(Qt.ItemDataRole.UserRole, parti_val)
             parti_item.setTextAlignment(Qt.AlignCenter)
@@ -4332,15 +4332,15 @@ class DetailWidget(QWidget):
             tarih_item = SortableTableWidgetItem(tarih_display)
             tarih_item.setData(Qt.ItemDataRole.UserRole, tarih_raw)
             tarih_item.setTextAlignment(Qt.AlignCenter)
-
+            
             is_completed = (len(r) > 11 and r[11] == 1.0)
             date_color = get_date_color(tarih_raw, is_completed)
             if date_color:
                 tarih_item.setBackground(QColor(date_color))
                 tarih_item.setForeground(QColor("white"))
-
+                
             self.table.setItem(row_idx, 5, tarih_item)
-
+            
             # Miktar
             miktar_val = str(r[16]) if len(r) > 16 and r[16] else ""
             m_item = QTableWidgetItem(miktar_val)
@@ -4388,16 +4388,16 @@ class DetailWidget(QWidget):
                     yak_val_num = float(yak_val_raw)
             except:
                 yak_val_num = 0.0
-
+                
             yak_item = SortableTableWidgetItem(f"{format_money(yak_val_num)} TL")
             yak_item.setData(Qt.ItemDataRole.UserRole, yak_val_num)
             yak_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(row_idx, 19, yak_item)
-
+                
             # 26:Test Detay (B), 27:Test Detay (S), 28:Fatura
             self.table.setItem(row_idx, 26, QTableWidgetItem(str(r[20]) if len(r) > 20 else "-"))
             self.table.setItem(row_idx, 27, QTableWidgetItem(str(r[21]) if len(r) > 21 else "-"))
-
+            
             fatura_val = r[12] if len(r) > 12 else 0.0
             f_item = QTableWidgetItem("✓" if fatura_val == 1.0 else "○")
             f_item.setTextAlignment(Qt.AlignCenter)
@@ -4422,7 +4422,7 @@ class DetailWidget(QWidget):
 
             action_layout.addStretch()
             self.table.setCellWidget(row_idx, 29, action_widget)
-
+            
         self.table.setSortingEnabled(True)  # Sıralamayı tekrar aç
 
     # --------------------------------------------------------
@@ -4483,22 +4483,22 @@ class DetailWidget(QWidget):
         ikn = r[1]
         ihale = r[3]
         firma = r[2]
-
+        
         msg = QMessageBox(self)
         msg.setWindowTitle("Silme Seçeneği")
         msg.setText("Bu kayıt için silme işlemini nasıl yapmak istersiniz?")
         msg.setInformativeText(f"IKN: {ikn}\nFirma: {firma}\nİhale: {ihale}")
         msg.setIcon(QMessageBox.Icon.Question)
-
+        
         # Özel Butonlar
         btn_single = msg.addButton("Sadece Bu Partiyi Sil", QMessageBox.ButtonRole.AcceptRole)
         btn_all = msg.addButton("Tüm İhaleyi Sil (İş Bilgileri)", QMessageBox.ButtonRole.DestructiveRole)
         btn_cancel = msg.addButton("İptal", QMessageBox.ButtonRole.RejectRole)
-
+        
         msg.exec()
-
+        
         clicked_button = msg.clickedButton()
-
+        
         if clicked_button == btn_single:
             try:
                 delete_record(r[0])
@@ -4509,10 +4509,10 @@ class DetailWidget(QWidget):
                 self.parent_window.refresh_all()
             except Exception as e:
                 QMessageBox.critical(self, "Hata", f"Silme işlemi başarısız: {e}")
-
+                
         elif clicked_button == btn_all:
              # Onay iste (çünkü toplu silme)
-            check = QMessageBox.question(self, "Onay",
+            check = QMessageBox.question(self, "Onay", 
                                         f"BU İŞLEME AİT TÜM KAYITLAR SİLİNECEK!\n\nIKN: {ikn}\nFirma: {firma}\n\nEmin misiniz?",
                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             if check == QMessageBox.StandardButton.Yes:
@@ -4530,13 +4530,13 @@ class DetailWidget(QWidget):
         selected_items = self.table.selectedItems()
         if not selected_items:
             return
-
+            
         menu = QtWidgets.QMenu(self)
         action_bulk_edit = menu.addAction("Seçili Kayıtları Topluca Düzenle")
         action_shift_dates = menu.addAction("Seçili Parti Son Teslim Tarihlerini Ötele")
-
+        
         action = menu.exec(self.table.viewport().mapToGlobal(pos))
-
+        
         if action == action_bulk_edit:
             selected_rows = set(item.row() for item in selected_items)
             records_to_edit = []
@@ -4549,7 +4549,7 @@ class DetailWidget(QWidget):
                             if r[0] == rowid:
                                 records_to_edit.append(r)
                                 break
-
+            
             if records_to_edit:
                 if BulkEditDialog(records_to_edit, self).exec():
                     self.parent_window.refresh_all()
@@ -4565,7 +4565,7 @@ class DetailWidget(QWidget):
                             if r[0] == rowid:
                                 records_to_edit.append(r)
                                 break
-
+            
             if records_to_edit:
                 if DateShiftDialog(records_to_edit, self).exec():
                     self.parent_window.refresh_all()
@@ -4577,13 +4577,13 @@ class DateShiftDialog(QDialog):
         self.setWindowTitle(f"Tarihleri Ötele ({len(records)} kayıt)")
         self.setFixedWidth(500)
         self.setup_ui()
-
+        
     def setup_ui(self):
         layout = QVBoxLayout(self)
-
+        
         layout.addWidget(QLabel("<b>Ötelenecek Gün Sayısı:</b>"))
         layout.addWidget(QLabel("<small>(Pozitif: İleri, Negatif: Geri)</small>"))
-
+        
         self.days_spin = QtWidgets.QSpinBox()
         self.days_spin.setRange(-3650, 3650)
         self.days_spin.setValue(0)
@@ -4591,10 +4591,10 @@ class DateShiftDialog(QDialog):
         self.days_spin.setMinimumHeight(35)
         self.days_spin.valueChanged.connect(self.update_preview)
         layout.addWidget(self.days_spin)
-
+        
         layout.addSpacing(10)
         layout.addWidget(QLabel("<b>Önizleme:</b>"))
-
+        
         self.preview_table = QTableWidget()
         self.preview_table.setColumnCount(3)
         self.preview_table.setHorizontalHeaderLabels(["İhale/Parti", "Eski Tarih", "Yeni Tarih"])
@@ -4602,28 +4602,28 @@ class DateShiftDialog(QDialog):
         self.preview_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.preview_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         layout.addWidget(self.preview_table)
-
+        
         self.update_preview()
-
+        
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         buttons.button(QDialogButtonBox.StandardButton.Save).setText("Tarihleri Güncelle")
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("İptal")
         buttons.accepted.connect(self.save_changes)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-
+        
     def update_preview(self):
         days = self.days_spin.value()
         self.preview_table.setRowCount(len(self.records))
-
+        
         for i, r in enumerate(self.records):
             # r index: 0=rowid, 1=IKN, 2=Firma, 3=Ihale, 4=PartiNo, 5=Tarih
             name = f"{r[3]} (P: {r[4]})"
             old_date_str = str(r[5])[:10] if r[5] else ""
-
+            
             self.preview_table.setItem(i, 0, QTableWidgetItem(name))
             self.preview_table.setItem(i, 1, QTableWidgetItem(format_date_tr(old_date_str)))
-
+            
             if old_date_str:
                 try:
                     old_date = datetime.strptime(old_date_str, "%Y-%m-%d")
@@ -4646,16 +4646,16 @@ class DateShiftDialog(QDialog):
         if days == 0:
             self.reject()
             return
-
+            
         reply = QMessageBox.question(self, "Onay", f"{len(self.records)} kaydın tarihini {days} gün ötelemek istediğinize emin misiniz?",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply != QMessageBox.StandardButton.Yes:
             return
-
+            
         try:
             timestamp = datetime.now().strftime("%d.%m.%Y %H:%M")
             audit_log = f"Tarih Öteleme ({days} gün): {CURRENT_USER} ({timestamp})"
-
+            
             log_details = []
             for r in self.records:
                 rowid = r[0]
@@ -4664,13 +4664,13 @@ class DateShiftDialog(QDialog):
                     old_date = datetime.strptime(old_date_str, "%Y-%m-%d")
                     new_date = old_date + timedelta(days=days)
                     new_date_str = new_date.strftime("%Y-%m-%d")
-
+                    
                     update_record(rowid, "Parti Son Teslim Tarihi", new_date_str)
                     update_record(rowid, "SonGuncelleme", audit_log)
-
+                    
                     # Log detayı ekle
                     log_details.append(f"IKN: {r[1]}, Firma: {r[2]}, Parti: {r[4]}")
-
+            
             final_log = f"Gün: {days} | Detaylar: " + "; ".join(log_details)
             log_action("Toplu Tarih Öteleme", final_log)
             self.accept()
@@ -4826,12 +4826,12 @@ class SettingsDialog(QDialog):
     def setup_ui(self):
         layout = QVBoxLayout(self)
         tabs = QTabWidget()
-
+        
         # Tab 1: Sütun Ayarları (DetailWidget'tan taşındı)
         col_tab = QWidget()
         col_layout = QVBoxLayout(col_tab)
         col_layout.addWidget(QLabel("<b>Düzenleme Tablosu Sütun Görünürlüğü:</b>"))
-
+        
         # Hızlı Ayar Butonları
         btn_row = QHBoxLayout()
         btn_all = QPushButton("✅ Tüm Sütunları Göster")
@@ -4844,10 +4844,10 @@ class SettingsDialog(QDialog):
         btn_row.addWidget(btn_min)
         btn_row.addStretch()
         col_layout.addLayout(btn_row)
-
+        
         self.col_checkboxes = [] # (index or list of indices, checkbox_obj)
         detail_widget = self.parent_window.detail_widget
-
+        
         # Daha açıklayıcı isimler için harita
         column_map = {
             "IKN": "İhale Kayıt No (İKN)",
@@ -4870,31 +4870,31 @@ class SettingsDialog(QDialog):
             "Test Detay (S)": "Test Sonuç Notu",
             "Fatura": "Fatura Kesildi"
         }
-
+        
         scroll = QScrollArea()
         scroll_content = QWidget()
         scroll_grid = QGridLayout(scroll_content)
         scroll_grid.setSpacing(10)
-
+        
         # Temel Sütunlar ve Yeni İhale Bilgileri
         # 0:IKN, 1:Firma, 2:İhale Adı, 3:Sözl. Tarihi, 4:Parti, 5:Parti Tarihi, 6:Miktar, 7:Detay, 8:Tutar, 16:Açıklama
         # 17:Tür, 18:Usul, 19:YakMaliyet, 20:IhaleTarih, 21:IseBaslama, 22:Sure, 23:Cari, 24:Proje, 25:Kart
         basic_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
         grid_idx = 0
-
+        
         for col in basic_indices:
             header_item = detail_widget.table.horizontalHeaderItem(col)
             orig_label = header_item.text() if header_item else f"Sütun {col}"
             display_label = column_map.get(orig_label, orig_label)
-
+            
             cb = QCheckBox(display_label)
             cb.setChecked(not detail_widget.table.isColumnHidden(col))
             cb.setStyleSheet("font-size: 12px; padding: 2px;")
-
+            
             scroll_grid.addWidget(cb, grid_idx // 2, grid_idx % 2)
             self.col_checkboxes.append((col, cb))
             grid_idx += 1
-
+            
         # İşlem Adımları Grubu (9-15 arası sütunlar + 26, 27, 28)
         action_step_indices = list(range(9, 16)) + [26, 27, 28]
         cb_action_group = QCheckBox("🔄 İşlem Adımları ve Detaylar")
@@ -4902,25 +4902,25 @@ class SettingsDialog(QDialog):
         any_visible = any(not detail_widget.table.isColumnHidden(i) for i in action_step_indices)
         cb_action_group.setChecked(any_visible)
         cb_action_group.setStyleSheet("font-size: 12px; font-weight: bold; color: #6366f1; padding: 2px;")
-
+        
         scroll_grid.addWidget(cb_action_group, grid_idx // 2, grid_idx % 2)
         self.col_checkboxes.append((action_step_indices, cb_action_group))
-
+        
         scroll.setWidget(scroll_content)
         scroll.setWidgetResizable(True)
         col_layout.addWidget(scroll)
-
+        
         tabs.addTab(col_tab, "📊 Sütun Ayarları")
-
+        
         # Tab 2: Laboratuvar Listesi
         lab_tab = QWidget()
         lab_layout = QVBoxLayout(lab_tab)
         lab_layout.addWidget(QLabel("<b>Laboratuvar Listesi:</b>"))
-
+        
         self.lab_list_widget = QtWidgets.QListWidget()
         self.refresh_lab_list()
         lab_layout.addWidget(self.lab_list_widget)
-
+        
         lab_btn_row = QHBoxLayout()
         self.lab_input = QLineEdit()
         self.lab_input.setPlaceholderText("Yeni laboratuvar adı...")
@@ -4931,21 +4931,21 @@ class SettingsDialog(QDialog):
         btn_edit_lab = QPushButton("Düzenle")
         btn_edit_lab.setObjectName("PrimaryBtn")
         btn_edit_lab.clicked.connect(self.edit_lab)
-
+        
         btn_del_lab = QPushButton("Seçiliyi Sil")
         btn_del_lab.setObjectName("DangerBtn")
         btn_del_lab.clicked.connect(self.delete_lab)
-
+        
         lab_btn_row.addWidget(self.lab_input)
         lab_btn_row.addWidget(btn_add_lab)
         lab_btn_row.addWidget(btn_edit_lab)
         lab_btn_row.addWidget(btn_del_lab)
         lab_layout.addLayout(lab_btn_row)
-
+        
         tabs.addTab(lab_tab, "🧪 Laboratuvarlar")
-
+        
         layout.addWidget(tabs)
-
+        
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         btns.button(QDialogButtonBox.StandardButton.Save).setText("Kaydet ve Uygula")
         btns.button(QDialogButtonBox.StandardButton.Cancel).setText("Kapat")
@@ -4994,7 +4994,7 @@ class SettingsDialog(QDialog):
 
     def edit_lab(self):
         current_item = self.lab_list_widget.currentItem()
-        if not current_item:
+        if not current_item: 
             QMessageBox.warning(self, "Uyarı", "Lütfen düzenlemek istediğiniz laboratuvarı seçin.")
             return
         old_name = current_item.text()
@@ -5016,7 +5016,7 @@ class SettingsDialog(QDialog):
         # Sütun ayarlarını uygula ve kaydet
         detail_widget = self.parent_window.detail_widget
         settings = QSettings("IhaleSystem", f"UserPrefs/{CURRENT_USER}")
-
+        
         for col_data, cb in self.col_checkboxes:
             is_visible = cb.isChecked()
             if isinstance(col_data, list):
@@ -5028,7 +5028,7 @@ class SettingsDialog(QDialog):
                 # Tekil sütun
                 detail_widget.table.setColumnHidden(col_data, not is_visible)
                 settings.setValue(f"column_visible_{col_data}", is_visible)
-
+            
         QMessageBox.information(self, "Başarılı", "Ayarlar kaydedildi ve uygulandı.")
         self.accept()
 
@@ -5056,7 +5056,7 @@ class AboutDialog(QDialog):
     def setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignCenter)
-
+        
         # Info Text
         info_text = """
         <h3 style='color: #6366f1; margin-bottom:0;'>İhale Takip Uygulaması v7.12</h3>
@@ -5074,17 +5074,17 @@ class AboutDialog(QDialog):
             <li>Framework: PySide6 </li>
             <li>Veri Tabanı: SQLite</li>
         </ul>
-
+       
         GPL Lisansı Altında Dağıtılmaktadır. | 2026
         """
-
+        
         text_lbl = QLabel(info_text)
         text_lbl.setAlignment(Qt.AlignCenter)
         text_lbl.setOpenExternalLinks(True)
         layout.addWidget(text_lbl)
-
+        
         layout.addStretch()
-
+        
         btn_close = QPushButton("Kapat")
         btn_close.setFixedWidth(100)
         btn_close.clicked.connect(self.accept)
@@ -5097,7 +5097,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("İhale Takip Sistemi")
         self.resize(1700, 900)
         self.showMaximized()
-
+        
         # Kullanıcıya özel tema yükleme
         settings = QSettings("IhaleSystem", f"UserPrefs/{CURRENT_USER}")
         self.is_dark_mode = settings.value("dark_mode", "false") == "true"
@@ -5105,21 +5105,21 @@ class MainWindow(QMainWindow):
             app.setStyleSheet(DARK_STYLE)
         else:
             app.setStyleSheet(LIGHT_STYLE)
-
+        
         central = QWidget(); self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-
+        
         # Üst Bar (Tema Değiştirici)
         top_bar = QHBoxLayout()
         top_bar.addStretch()
-
+        
         self.btn_user = QPushButton(f"👤 {CURRENT_USER}")
         self.btn_user.setObjectName("PrimaryBtn")
         self.btn_user.setFixedWidth(120)
         self.btn_user.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_user.clicked.connect(self.show_user_mgmt)
         top_bar.addWidget(self.btn_user)
-
+        
         top_bar.addSpacing(5)
 
         self.btn_settings = QPushButton("⚙️ Ayarlar")
@@ -5130,14 +5130,14 @@ class MainWindow(QMainWindow):
         top_bar.addWidget(self.btn_settings)
 
         top_bar.addSpacing(5)
-
+        
         self.btn_logout = QPushButton("🚪 Çıkış Yap")
         self.btn_logout.setFixedWidth(120)
         self.btn_logout.setCursor(Qt.CursorShape.PointingHandCursor)
         # Soft Red -> Vivid Red Hover
         self.btn_logout.setStyleSheet("""
             QPushButton {
-                background-color: #ef5350;
+                background-color: #ef5350; 
                 color: white;
                 border-radius: 6px;
                 padding: 8px 8px;
@@ -5152,25 +5152,25 @@ class MainWindow(QMainWindow):
         top_bar.addWidget(self.btn_logout)
 
         top_bar.addSpacing(10)
-
+        
         self.btn_theme = QPushButton("☀️ Aydınlık Mod" if self.is_dark_mode else "🌙 Karanlık Mod")
         self.btn_theme.setObjectName("PrimaryBtn")
         self.btn_theme.setFixedWidth(140)
         self.btn_theme.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_theme.clicked.connect(self.toggle_theme)
         top_bar.addWidget(self.btn_theme)
-
+        
         top_bar.addSpacing(5)
-
+        
         self.btn_about = QPushButton("ℹ️ Hakkında")
         self.btn_about.setObjectName("PrimaryBtn")
         self.btn_about.clicked.connect(self.show_about)
         self.btn_about.setFixedWidth(110)
         self.btn_about.setCursor(Qt.CursorShape.PointingHandCursor)
         top_bar.addWidget(self.btn_about)
-
+        
         layout.addLayout(top_bar)
-
+        
         self.tabs = QTabWidget()
         self.summary_widget = SummaryWidget(self)
         self.detail_widget = DetailWidget(self)
@@ -5178,18 +5178,18 @@ class MainWindow(QMainWindow):
         self.tender_widget = TenderWidget(self)
         self.firm_widget = FirmSummaryWidget(self)
         self.log_widget = LogWidget() # Parent yok, tab'a eklenince reparent olacak
-
+        
         self.tabs.addTab(self.summary_widget, "📊 Güncel İhale ve Parti Bilgileri")
         self.tabs.addTab(self.detail_widget, "📋 Tüm İhale ve Parti Bilgileri")
-        self.tabs.addTab(self.calendar_widget, "📅 Takvim Görünümü")
+        self.tabs.addTab(self.calendar_widget, "📅 Takvim Görünümü")        
         self.tabs.addTab(self.tender_widget, "🏢 Sözleşme Bilgileri")
         self.tabs.addTab(self.firm_widget, "🏭 Firma Özetleri")
-
+        
         if CURRENT_USER_ROLE == "admin":
             self.tabs.addTab(self.log_widget, "📜 İşlem Kayıtları")
-
+        
         layout.addWidget(self.tabs)
-
+        
     def toggle_theme(self):
         self.is_dark_mode = not self.is_dark_mode
         if self.is_dark_mode:
@@ -5206,7 +5206,7 @@ class MainWindow(QMainWindow):
         self.calendar_widget.update_calendar_styles()
         self.calendar_widget.highlight_dates()
         self.detail_widget.apply_filters()
-
+    
     def refresh_all(self):
         self.summary_widget.refresh_summary()
         self.calendar_widget.refresh_data()
@@ -5215,7 +5215,7 @@ class MainWindow(QMainWindow):
         self.firm_widget.refresh_data()
         if CURRENT_USER_ROLE == "admin":
             self.log_widget.refresh_logs()
-
+        
     def show_about(self):
         AboutDialog(self).exec()
 
@@ -5231,13 +5231,13 @@ class MainWindow(QMainWindow):
         msg.setText("Oturumu kapatmak istediğinize emin misiniz?")
         msg.setInformativeText("Otomatik giriş pasif edilecektir.")
         msg.setIcon(QMessageBox.Icon.Question)
-
+        
         # Custom Buttons (Evet / Hayır)
         btn_yes = msg.addButton("Evet", QMessageBox.ButtonRole.YesRole)
         btn_no = msg.addButton("Hayır", QMessageBox.ButtonRole.NoRole)
-
+        
         msg.exec()
-
+        
         if msg.clickedButton() == btn_yes:
             settings = QSettings("IhaleSystem", "LoginSettings")
             settings.setValue("auto_login", "false")
@@ -5248,27 +5248,27 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
     # Uygulama açılışında yedekleme kontrolü yap
     check_and_create_backup()
-
-    app = QApplication(sys.argv)
+    
+    app = QApplication(sys.argv)    
     app.setStyle('Fusion')
-
+    
     # Global font
     font = QFont("Segoe UI", 10)
     app.setFont(font)
-
+    
     # Stylesheet application
     app.setStyleSheet(LIGHT_STYLE)
-
+    
     while True:
         # Check for auto login
         settings = QSettings("IhaleSystem", "LoginSettings")
         auto_login = settings.value("auto_login", "false") == "true"
-
+        
         login_success = False
         if auto_login:
             username = settings.value("username", "")
             password = settings.value("password", "")
-
+            
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password))
@@ -5282,20 +5282,20 @@ if __name__ == "__main__":
                     CURRENT_USER_ROLE = "admin" if username == "admin" else "user"
                 login_success = True
             conn.close()
-
+        
         if not login_success:
             login = LoginDialog()
             if login.exec() == QDialog.DialogCode.Accepted:
                 login_success = True
             else:
                 break # User closed login dialog
-
+                
         if login_success:
             w = MainWindow()
             w.logout_requested = False
             w.show()
             app.exec()
-
+            
             if w.logout_requested:
                 # Loop back to login
                 # Force disable auto login in loop as we just logged out
@@ -5305,5 +5305,5 @@ if __name__ == "__main__":
                 break
         else:
             break
-
+            
     sys.exit(0)
