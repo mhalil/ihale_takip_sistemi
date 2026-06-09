@@ -16,8 +16,140 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                 QFileDialog, QTextEdit, QCompleter, QStyleOptionViewItem
                                 )
 from PySide6.QtCore import Qt, QDate, QTimer, QRegularExpression, QSettings, QEvent
+from PySide6.QtGui import QShortcut, QKeySequence
 from PySide6.QtGui import (QIntValidator, QRegularExpressionValidator, QFont,
                             QColor,  QTextCharFormat, QBrush, QPainter, QStandardItem, QStandardItemModel)
+from enum import IntEnum
+
+# --- VERITABANI ALAN INDEKSLERI (Magic Number'lardan kurtul) ---
+class Field(IntEnum):
+    ID = 0
+    IKN = 1
+    FIRMA = 2
+    IHALE_ADI = 3
+    PARTI_NO = 4
+    TESLIM_TARIHI = 5
+    TUTAR = 6
+    AMBAR_TESLIM = 7
+    TEST_BASLADI = 8
+    TEST_SONUC = 9
+    KABUL_RAPOR = 10
+    KABUL = 11
+    ODEME = 13
+    ACIKLAMA = 14
+    MIKTAR = 16
+    SOZLESME_TARIHI = 17
+    MALZEME_DETAYI = 18
+    HEYET_HABER = 19
+    TEST_DETAY_B = 20
+    TEST_DETAY_S = 21
+    IHALE_TURU = 22
+    IHALE_USULU = 23
+    YAK_MALIYET = 24
+    IHALE_TARIHI = 25
+    ISE_BASLAMA = 26
+    ISIN_SURESI = 27
+    CARI_NO = 28
+    PROJE_NO = 29
+    KART_NO = 30
+
+# --- OTURUM (Global degiskenlerden kurtul) ---
+class SessionMeta(type):
+    @property
+    def user(cls):
+        return cls._username
+    @property
+    def role(cls):
+        return cls._role
+    @property
+    def is_admin(cls):
+        return cls._role == "admin"
+    @property
+    def is_editor_or_admin(cls):
+        return cls._role in ("admin", "editor")
+    @property
+    def can_delete(cls):
+        return cls._role == "admin"
+    @property
+    def can_manage_users(cls):
+        return cls._role == "admin"
+    @property
+    def can_view_logs(cls):
+        return cls._role == "admin"
+
+class Session(metaclass=SessionMeta):
+    _username = "user"
+    _role = "user"
+
+    @classmethod
+    def login(cls, username: str, role: str) -> None:
+        cls._username = username
+        cls._role = role
+
+    @classmethod
+    def logout(cls) -> None:
+        cls._username = "user"
+        cls._role = "user"
+
+# --- VERITABANI MIGRATION (Yeni alanlari otomatik ekle) ---
+MIGRATIONS = [
+    ("ALTER TABLE data ADD COLUMN `Ihale Turu` TEXT DEFAULT ''", "Ihale Turu"),
+    ("ALTER TABLE data ADD COLUMN `Ihale Usulu` TEXT DEFAULT ''", "Ihale Usulu"),
+    ("ALTER TABLE data ADD COLUMN `Ihale Tarihi` TEXT DEFAULT ''", "Ihale Tarihi"),
+    ("ALTER TABLE data ADD COLUMN `Ise Baslama Tarihi` TEXT DEFAULT ''", "Ise Baslama Tarihi"),
+    ("ALTER TABLE data ADD COLUMN `Isin Suresi` TEXT DEFAULT ''", "Isin Suresi"),
+    ("ALTER TABLE data ADD COLUMN `Cari No` TEXT DEFAULT ''", "Cari No"),
+    ("ALTER TABLE data ADD COLUMN `Proje No` TEXT DEFAULT ''", "Proje No"),
+    ("ALTER TABLE data ADD COLUMN `Kart No` TEXT DEFAULT ''", "Kart No"),
+    ("ALTER TABLE data ADD COLUMN `Test Detay B` TEXT DEFAULT ''", "Test Detay B"),
+    ("ALTER TABLE data ADD COLUMN `Test Detay S` TEXT DEFAULT ''", "Test Detay S"),
+]
+
+def run_migrations():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    for sql, col_name in MIGRATIONS:
+        try:
+            cursor.execute(sql)
+            conn.commit()
+        except sqlite3.OperationalError:
+            conn.rollback()
+    conn.close()
+
+# --- ORTAK SAYI FORMATLAMA FONKSIYONU (format_on_type tekrari icin) ---
+def format_number_edit(edit_widget: QLineEdit, text: str) -> None:
+    if not text:
+        return
+    cursor_pos = edit_widget.cursorPosition()
+    old_len = len(text)
+    clean_text = text.replace('.', '')
+    if ',' in clean_text:
+        parts = clean_text.split(',')
+        integer_part = parts[0]
+        decimal_part = "," + parts[1][:2]
+    else:
+        integer_part = clean_text
+        decimal_part = ""
+    if not integer_part and not decimal_part:
+        return
+    try:
+        if integer_part.lstrip('-').isdigit():
+            is_negative = integer_part.startswith('-')
+            val = integer_part.lstrip('-')
+            rev_val = val[::-1]
+            groups = [rev_val[i:i+3] for i in range(0, len(rev_val), 3)]
+            formatted_int = ".".join(groups)[::-1]
+            if is_negative:
+                formatted_int = "-" + formatted_int
+            new_text = formatted_int + decimal_part
+            edit_widget.blockSignals(True)
+            edit_widget.setText(new_text)
+            edit_widget.blockSignals(False)
+            new_len = len(new_text)
+            new_pos = cursor_pos + (new_len - old_len)
+            edit_widget.setCursorPosition(max(0, new_pos))
+    except:
+        pass
 
 def _is_checked(value):
     try:
@@ -363,15 +495,8 @@ class LoginDialog(QDialog):
         conn.close()
 
         if user:
-            global CURRENT_USER, CURRENT_USER_ROLE
-            CURRENT_USER = username
-            # user structure: username, password, role (index 2)
-            # Safe check if column exists, otherwise default to user/admin check
-            if len(user) > 2:
-                CURRENT_USER_ROLE = user[2]
-            else:
-                 # Fallback for old schema if migration failed or legacy
-                 CURRENT_USER_ROLE = "admin" if username == "admin" else "user"
+            role = user[2] if len(user) > 2 else ("admin" if username == "admin" else "user")
+            Session.login(username, role)
 
             # Save settings
             self.settings.setValue("username", username)
@@ -410,7 +535,7 @@ class UserManagementDialog(QDialog):
         pw_tab = QWidget()
         pw_layout = QVBoxLayout(pw_tab)
 
-        pw_layout.addWidget(QLabel(f"<b>Kullanıcı:</b> {CURRENT_USER}"))
+        pw_layout.addWidget(QLabel(f"<b>Kullanıcı:</b> {Session.user}"))
 
         self.new_pw = QLineEdit()
         self.new_pw.setPlaceholderText("Yeni Şifre")
@@ -432,7 +557,7 @@ class UserManagementDialog(QDialog):
         tabs.addTab(pw_tab, "Şifre Değiştir")
 
         # Add User (Admin Only)
-        if CURRENT_USER_ROLE == "admin":
+        if Session.can_manage_users:
             add_tab = QWidget()
             add_layout = QVBoxLayout(add_tab)
 
@@ -453,8 +578,10 @@ class UserManagementDialog(QDialog):
             add_layout.addWidget(QLabel("Şifre (Tekrar):"))
             add_layout.addWidget(self.new_user_pw_confirm)
 
-            self.admin_check = QCheckBox("Yönetici (Admin) Yetkisi Ver")
-            add_layout.addWidget(self.admin_check)
+            self.role_combo = QtWidgets.QComboBox()
+            self.role_combo.addItems(["user", "editor", "admin"])
+            add_layout.addWidget(QLabel("Rol:"))
+            add_layout.addWidget(self.role_combo)
 
             btn_add = QPushButton("Kullanıcı Ekle")
             btn_add.clicked.connect(self.handle_add_user)
@@ -482,8 +609,10 @@ class UserManagementDialog(QDialog):
             role_layout.addWidget(QLabel("Kullanıcı Seç:"))
             role_layout.addWidget(self.role_user_combo)
 
-            self.role_admin_check = QCheckBox("Yönetici (Admin) Yetkisi")
-            role_layout.addWidget(self.role_admin_check)
+            self.role_edit_combo = QtWidgets.QComboBox()
+            self.role_edit_combo.addItems(["user", "editor", "admin"])
+            role_layout.addWidget(QLabel("Rol:"))
+            role_layout.addWidget(self.role_edit_combo)
 
             btn_update_role = QPushButton("Yetkiyi Güncelle")
             btn_update_role.clicked.connect(self.handle_role_update)
@@ -513,8 +642,8 @@ class UserManagementDialog(QDialog):
             QMessageBox.warning(self, "Hata", "Şifreler uyuşmuyor!")
             return
 
-        update_password(CURRENT_USER, pw1)
-        log_action("Şifre Değiştirme", f"Kullanıcı: {CURRENT_USER}")
+        update_password(Session.user, pw1)
+        log_action("Şifre Değiştirme", f"Kullanıcı: {Session.user}")
         QMessageBox.information(self, "Başarılı", "Şifreniz güncellendi.")
         self.new_pw.clear()
         self.confirm_pw.clear()
@@ -523,7 +652,7 @@ class UserManagementDialog(QDialog):
         name = self.new_username.text()
         pw = self.new_user_pw.text()
         pw_confirm = self.new_user_pw_confirm.text()
-        role = "admin" if self.admin_check.isChecked() else "user"
+        role = self.role_combo.currentText()
 
         if not name or not pw:
             QMessageBox.warning(self, "Hata", "Kullanıcı adı ve şifre gereklidir!")
@@ -539,7 +668,7 @@ class UserManagementDialog(QDialog):
             self.new_username.clear()
             self.new_user_pw.clear()
             self.new_user_pw_confirm.clear()
-            self.admin_check.setChecked(False)
+            self.role_combo.setCurrentIndex(0)
             self.update_user_list_display()
             self.refresh_role_combo()
         else:
@@ -557,14 +686,16 @@ class UserManagementDialog(QDialog):
     def update_user_list_display(self):
         users_raw = fetch_users_raw()
         admins = sorted([u for u, r in users_raw if r == "admin"])
-        users = sorted([u for u, r in users_raw if r != "admin"])
+        editors = sorted([u for u, r in users_raw if r == "editor"])
+        users = sorted([u for u, r in users_raw if r not in ("admin", "editor")])
 
         html = ""
         if admins:
-            html += "<b>Yöneticiler (Admin):</b><br>" + ", ".join(admins) + "<br><br>"
-
+            html += "<b>👑 Yöneticiler (Admin):</b><br>" + ", ".join(admins) + "<br><br>"
+        if editors:
+            html += "<b>✏️ Editörler (Editor):</b><br>" + ", ".join(editors) + "<br><br>"
         if users:
-            html += "<b>Kullanıcılar (User):</b><br>" + ", ".join(users)
+            html += "<b>👁️ Kullanıcılar (User):</b><br>" + ", ".join(users)
 
         self.user_list.setText(html)
 
@@ -572,19 +703,21 @@ class UserManagementDialog(QDialog):
         data = self.role_user_combo.currentData()
         if data:
             username, role = data
-            self.role_admin_check.setChecked(role == "admin")
-            self.role_admin_check.setEnabled(username != "admin") # Protect main admin
+            idx = self.role_edit_combo.findText(role)
+            if idx >= 0:
+                self.role_edit_combo.setCurrentIndex(idx)
+            self.role_edit_combo.setEnabled(username != "admin")
 
     def handle_role_update(self):
         data = self.role_user_combo.currentData()
         if not data: return
 
         username, old_role = data
-        new_role = "admin" if self.role_admin_check.isChecked() else "user"
+        new_role = self.role_edit_combo.currentText()
 
         if username == "admin" and new_role != "admin":
              QMessageBox.warning(self, "Hata", "Ana 'admin' kullanıcısının yetkisi alınamaz!")
-             self.role_admin_check.setChecked(True)
+             self.role_edit_combo.setCurrentText("admin")
              return
 
         update_user_role(username, new_role)
@@ -601,6 +734,8 @@ class FirmDetailDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(f"Firma Detayları: {firm_name}")
         self.resize(1300, 650)
+        self.firm_name = firm_name
+        self.tenders = tenders
 
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
@@ -679,12 +814,37 @@ class FirmDetailDialog(QDialog):
         layout.addWidget(self.table)
 
         btn_box = QHBoxLayout()
+        self.btn_export = QPushButton("📊 CSV Olarak Dışa Aktar")
+        self.btn_export.setObjectName("InfoBtn")
+        self.btn_export.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_export.clicked.connect(self.export_to_csv)
+        btn_box.addWidget(self.btn_export)
         btn_box.addStretch()
         close_btn = QPushButton("Kapat")
         close_btn.setFixedWidth(100)
         close_btn.clicked.connect(self.accept)
         btn_box.addWidget(close_btn)
         layout.addLayout(btn_box)
+
+    def export_to_csv(self):
+        default_name = f"{self.firm_name}_ihale_gecmisi.csv"
+        path, _ = QFileDialog.getSaveFileName(self, "Verileri CSV Olarak Kaydet", default_name, "CSV Dosyası (*.csv)")
+        if not path:
+            return
+        try:
+            headers = [self.table.horizontalHeaderItem(i).text() for i in range(self.table.columnCount())]
+            with open(path, mode='w', encoding='utf-8-sig', newline='') as file:
+                writer = csv.writer(file, delimiter=';')
+                writer.writerow([f"Firma: {self.firm_name}"])
+                writer.writerow(headers)
+                for row in range(self.table.rowCount()):
+                    row_data = [self.table.item(row, col).text() if self.table.item(row, col) else ""
+                                for col in range(self.table.columnCount())]
+                    writer.writerow(row_data)
+            QMessageBox.information(self, "Başarılı", f"Veriler başarıyla dışa aktarıldı:\n{path}")
+            log_action("CSV Dışa Aktar (Firma Detayları)", f"Dosya: {path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"CSV dışa aktarma hatası:\n{e}")
 
 # --- CUSTOM WIDGETS ---
 class SortableTableWidgetItem(QTableWidgetItem):
@@ -816,7 +976,7 @@ def get_db_connection():
             "Test Sonuclari Geldi Detay" TEXT,
             "Ihale Turu" TEXT,
             "Ihale Usulu" TEXT,
-            "Yak. Maliyet" TEXT,
+            "Yak. Maliyet" REAL,
             "Ihale Tarihi" TEXT,
             "Ise Baslama Tarihi" TEXT,
             "Isin Suresi" TEXT,
@@ -941,7 +1101,7 @@ def log_action(action, details=""):
         cursor = conn.cursor()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute("INSERT INTO logs (timestamp, user, action, details) VALUES (?, ?, ?, ?)",
-                       (timestamp, CURRENT_USER, action, details))
+                       (timestamp, Session.user, action, details))
         conn.commit()
         conn.close()
     except Exception as e:
@@ -988,9 +1148,7 @@ def update_password(username, new_password):
     conn.commit()
     conn.close()
 
-# Global session user
-CURRENT_USER = None
-CURRENT_USER_ROLE = "user"
+# Global session, Session.login() ile yonetilir
 
 # --- YARDIMCI FONKSİYONLAR (PARA BİRİMİ) ---
 def format_money(value):
@@ -1131,15 +1289,17 @@ def fetch_data():
     conn.close()
     return rows
 
-def update_record(rowid, field_name, value):
-    # Sütun ismindeki olası boşluk ve Türkçe karakter güvenliğini doğrula
+def update_record(rowid, field_name, value, cursor=None):
     clean_field = "".join([c for c in field_name if c.isalnum() or c in " _-."])
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(f"UPDATE data SET `{clean_field}` = ? WHERE rowid = ?", (value, rowid))
-        conn.commit()
-        conn.close()
+        if cursor:
+            cursor.execute(f"UPDATE data SET `{clean_field}` = ? WHERE rowid = ?", (value, rowid))
+        else:
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute(f"UPDATE data SET `{clean_field}` = ? WHERE rowid = ?", (value, rowid))
+            conn.commit()
+            conn.close()
     except Exception as e:
         print(f"Veri güncellenirken hata oluştu ({clean_field}): {e}")
 
@@ -1546,7 +1706,7 @@ class NewTenderDialog(QDialog):
             # Detaylı Bilgiler
             ihale_turu_val = self.ihale_turu.currentText()
             ihale_usulu_val = self.ihale_usulu.currentText()
-            yak_maliyet_val = self.yak_maliyet.text()
+            yak_maliyet_val = parse_money(self.yak_maliyet.text())
             ihale_tarihi_str = self.ihale_tarihi.date().toString("yyyy-MM-dd")
             cari_no_val = self.cari_no.text()
             proje_no_val = self.proje_no.text()
@@ -1562,7 +1722,7 @@ class NewTenderDialog(QDialog):
             parti_tutari = toplam_tutar / parti_sayisi
 
             timestamp = datetime.now().strftime("%d.%m.%Y %H:%M")
-            audit_info = f"Kayıt: {CURRENT_USER} ({timestamp})"
+            audit_info = f"Kayıt: {Session.user} ({timestamp})"
 
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -1840,7 +2000,7 @@ class NewBatchDialog(QDialog):
             tutar = parse_money(self.amount_edit.text())
             aciklama = self.desc_edit.text()
             timestamp = datetime.now().strftime("%d.%m.%Y %H:%M")
-            audit_info = f"Kayıt: {CURRENT_USER} ({timestamp})"
+            audit_info = f"Kayıt: {Session.user} ({timestamp})"
 
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -1969,14 +2129,14 @@ class EditDialog(QDialog):
         self.miktar_edit = QLineEdit(miktar_val)
         self.miktar_edit.setValidator(QRegularExpressionValidator(QRegularExpression(r"[0-9\.,]*")))
         self.miktar_edit.setStyleSheet(edit_style)
-        self.miktar_edit.textEdited.connect(lambda text: self.format_on_type(self.miktar_edit, text))
+        self.miktar_edit.textEdited.connect(lambda text: format_number_edit(self.miktar_edit, text))
         scroll_basic_layout.addWidget(QLabel("Parti Miktarı:"))
         scroll_basic_layout.addWidget(self.miktar_edit)
 
         self.tutar_edit = QLineEdit(format_money(self.record[6])) if len(self.record) > 6 else QLineEdit("0,00")
         self.tutar_edit.setValidator(QRegularExpressionValidator(QRegularExpression(r"[0-9\.,]*")))
         self.tutar_edit.setStyleSheet(edit_style)
-        self.tutar_edit.textEdited.connect(lambda text: self.format_on_type(self.tutar_edit, text))
+        self.tutar_edit.textEdited.connect(lambda text: format_number_edit(self.tutar_edit, text))
         scroll_basic_layout.addWidget(QLabel("Parti Tutarı:"))
         scroll_basic_layout.addWidget(self.tutar_edit)
 
@@ -2127,34 +2287,7 @@ class EditDialog(QDialog):
                 self.isin_suresi_edit.setText('-')
 
     def format_on_type(self, edit_widget, text):
-        if not text: return
-        cursor_pos = edit_widget.cursorPosition()
-        old_len = len(text)
-        clean_text = text.replace('.', '')
-        if ',' in clean_text:
-            parts = clean_text.split(',')
-            integer_part = parts[0]
-            decimal_part = "," + parts[1][:2]
-        else:
-            integer_part = clean_text
-            decimal_part = ""
-        if not integer_part and not decimal_part: return
-        try:
-            if integer_part.lstrip('-').isdigit():
-                is_negative = integer_part.startswith('-')
-                val = integer_part.lstrip('-')
-                rev_val = val[::-1]
-                groups = [rev_val[i:i+3] for i in range(0, len(rev_val), 3)]
-                formatted_int = ".".join(groups)[::-1]
-                if is_negative: formatted_int = "-" + formatted_int
-                new_text = formatted_int + decimal_part
-                edit_widget.blockSignals(True)
-                edit_widget.setText(new_text)
-                edit_widget.blockSignals(False)
-                new_len = len(new_text)
-                new_pos = cursor_pos + (new_len - old_len)
-                edit_widget.setCursorPosition(max(0, new_pos))
-        except: pass
+        format_number_edit(edit_widget, text)
 
     def save_changes(self):
         try:
@@ -2261,14 +2394,14 @@ class EditDialog(QDialog):
                 change_details.append(f"Test Sonuç Lab: {new_test_result}")
 
             # Audit Log
-            audit_log = f"Düzenleme: {CURRENT_USER} ({timestamp})"
+            audit_log = f"Düzenleme: {Session.user} ({timestamp})"
             update_record(rowid, "SonGuncelleme", audit_log)
 
             if change_details:
                 log_desc = " | ".join(change_details)
-                log_action("Kayıt Düzenleme", f"ID: {rowid} | {log_desc}")
+                log_action("Kayıt Düzenleme", f"IKN: {old[1]} | Firma: {old[2]} | {log_desc}")
             else:
-                log_action("Kayıt Düzenleme", f"ID: {rowid} | Değişiklik yapılmadı")
+                log_action("Kayıt Düzenleme", f"IKN: {old[1]} | Firma: {old[2]} | Değişiklik yapılmadı")
             QMessageBox.information(self, "Başarılı", "Kayıt başarıyla güncellendi.")
             self.accept()
         except Exception as e:
@@ -2345,7 +2478,7 @@ class BulkEditDialog(QDialog):
         self.cb_update_miktar = QCheckBox("Miktarı Güncelle:")
         self.miktar_edit = QLineEdit(); self.miktar_edit.setEnabled(False); self.miktar_edit.setStyleSheet(edit_style)
         self.miktar_edit.setValidator(QRegularExpressionValidator(QRegularExpression(r"[0-9\.,]*")))
-        self.miktar_edit.textEdited.connect(lambda text: self.format_on_type(self.miktar_edit, text))
+        self.miktar_edit.textEdited.connect(lambda text: format_number_edit(self.miktar_edit, text))
         self.cb_update_miktar.toggled.connect(self.miktar_edit.setEnabled)
         form_layout.addWidget(self.cb_update_miktar, 4, 0); form_layout.addWidget(self.miktar_edit, 4, 1)
 
@@ -2357,7 +2490,7 @@ class BulkEditDialog(QDialog):
         self.cb_update_tutar = QCheckBox("Tutarı Güncelle:")
         self.tutar_edit = QLineEdit(); self.tutar_edit.setEnabled(False); self.tutar_edit.setStyleSheet(edit_style)
         self.tutar_edit.setValidator(QRegularExpressionValidator(QRegularExpression(r"[0-9\.,]*")))
-        self.tutar_edit.textEdited.connect(lambda text: self.format_on_type(self.tutar_edit, text))
+        self.tutar_edit.textEdited.connect(lambda text: format_number_edit(self.tutar_edit, text))
         self.cb_update_tutar.toggled.connect(self.tutar_edit.setEnabled)
         form_layout.addWidget(self.cb_update_tutar, 6, 0); form_layout.addWidget(self.tutar_edit, 6, 1)
 
@@ -2516,50 +2649,7 @@ class BulkEditDialog(QDialog):
         main_layout.addWidget(buttons)
 
     def format_on_type(self, edit_widget, text):
-        """Sayı yazılırken binlik ayraç ekleyen ve numerik formatı koruyan fonksiyon."""
-        if not text:
-            return
-
-        cursor_pos = edit_widget.cursorPosition()
-        old_len = len(text)
-
-        # Sadece sayıları ve virgülü koru
-        clean_text = text.replace('.', '')
-        if ',' in clean_text:
-            parts = clean_text.split(',')
-            integer_part = parts[0]
-            decimal_part = "," + parts[1][:2] # Max 2 ondalık
-        else:
-            integer_part = clean_text
-            decimal_part = ""
-
-        if not integer_part and not decimal_part:
-            return
-
-        try:
-            # Binlik ayraçları ekle
-            if integer_part.lstrip('-').isdigit():
-                is_negative = integer_part.startswith('-')
-                val = integer_part.lstrip('-')
-
-                # Sondan başlayarak her 3 hane arasına nokta koy
-                rev_val = val[::-1]
-                groups = [rev_val[i:i+3] for i in range(0, len(rev_val), 3)]
-                formatted_int = ".".join(groups)[::-1]
-                if is_negative: formatted_int = "-" + formatted_int
-
-                new_text = formatted_int + decimal_part
-
-                edit_widget.blockSignals(True)
-                edit_widget.setText(new_text)
-                edit_widget.blockSignals(False)
-
-                # Kursör pozisyonunu ayarla
-                new_len = len(new_text)
-                new_pos = cursor_pos + (new_len - old_len)
-                edit_widget.setCursorPosition(max(0, new_pos))
-        except:
-            pass
+        format_number_edit(edit_widget, text)
 
     def on_sozlesme_date_changed(self, date):
         """Sözleşme tarihi değiştiğinde işe başlama tarihini otomatik +1 gün yapar."""
@@ -2686,82 +2776,88 @@ class BulkEditDialog(QDialog):
                 return
 
             timestamp = datetime.now().strftime("%d.%m.%Y %H:%M")
-            audit_log = f"Toplu Düzenleme: {CURRENT_USER} ({timestamp})"
+            audit_log = f"Toplu Düzenleme: {Session.user} ({timestamp})"
 
-            for r in self.records:
-                rowid = r[0]
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("BEGIN")
+            try:
+                for r in self.records:
+                    rowid = r[0]
 
-                if do_ikn: update_record(rowid, "IKN", new_ikn)
-                if do_firma: update_record(rowid, "Yuklenici Firma", new_firma)
-                if do_ihale: update_record(rowid, "Ihale Adi", new_ihale)
+                    if do_ikn: update_record(rowid, "IKN", new_ikn, cursor)
+                    if do_firma: update_record(rowid, "Yuklenici Firma", new_firma, cursor)
+                    if do_ihale: update_record(rowid, "Ihale Adi", new_ihale, cursor)
 
-                if do_sozlesme:
-                    old_sozlesme_str = str(r[17]) if len(r) > 17 and r[17] else ""
-                    if old_sozlesme_str:
+                    if do_sozlesme:
+                        old_sozlesme_str = str(r[17]) if len(r) > 17 and r[17] else ""
+                        if old_sozlesme_str:
+                            try:
+                                old_sozlesme_dt = datetime.strptime(old_sozlesme_str[:10], "%Y-%m-%d")
+                                delta = (new_sozlesme_dt - old_sozlesme_dt).days
+                                if delta != 0:
+                                    old_teslim_str = str(r[5])[:10] if len(r) > 5 and r[5] else ""
+                                    if old_teslim_str:
+                                        old_teslim_dt = datetime.strptime(old_teslim_str, "%Y-%m-%d")
+                                        new_teslim_dt = old_teslim_dt + timedelta(days=delta)
+                                        new_teslim_str = new_teslim_dt.strftime("%Y-%m-%d")
+                                        update_record(rowid, "Parti Son Teslim Tarihi", new_teslim_str, cursor)
+                            except: pass
+                        update_record(rowid, "Sozlesme Tarihi", new_sozlesme_str, cursor)
+
+                    if do_miktar: update_record(rowid, "Parti Miktari", new_miktar, cursor)
+                    if do_malzeme: update_record(rowid, "Malzeme Detayi", new_malzeme, cursor)
+                    if do_tutar: update_record(rowid, "Parti Tutari", new_tutar, cursor)
+                    if do_aciklama: update_record(rowid, "Aciklama", new_aciklama, cursor)
+                    if do_test_start: update_record(rowid, "Testler Basladi Detay", new_test_start, cursor)
+                    if do_test_result: update_record(rowid, "Test Sonuclari Geldi Detay", new_test_result, cursor)
+
+                    if self.cb_update_turu.isChecked(): update_record(rowid, "Ihale Turu", self.turu_edit.currentText(), cursor)
+                    if self.cb_update_usulu.isChecked(): update_record(rowid, "Ihale Usulu", self.usulu_edit.currentText(), cursor)
+                    if self.cb_update_yak_maliyet.isChecked(): update_record(rowid, "Yak. Maliyet", parse_money(self.yak_maliyet_edit.text()), cursor)
+                    if self.cb_update_isin_suresi.isChecked():
+                        update_record(rowid, "Isin Suresi", self.isin_suresi_edit.text(), cursor)
+                    else:
                         try:
-                            old_sozlesme_dt = datetime.strptime(old_sozlesme_str[:10], "%Y-%m-%d")
-                            delta = (new_sozlesme_dt - old_sozlesme_dt).days
-                            if delta != 0:
-                                old_teslim_str = str(r[5])[:10] if len(r) > 5 and r[5] else ""
-                                if old_teslim_str:
-                                    old_teslim_dt = datetime.strptime(old_teslim_str, "%Y-%m-%d")
-                                    new_teslim_dt = old_teslim_dt + timedelta(days=delta)
-                                    new_teslim_str = new_teslim_dt.strftime("%Y-%m-%d")
-                                    update_record(rowid, "Parti Son Teslim Tarihi", new_teslim_str)
-                        except: pass
-                    update_record(rowid, "Sozlesme Tarihi", new_sozlesme_str)
+                            final_teslim_str = str(r[5])[:10] if len(r) > 5 and r[5] else ""
+                            if do_sozlesme:
+                                old_sozlesme_str = str(r[17])[:10] if len(r) > 17 and r[17] else ""
+                                if old_sozlesme_str:
+                                    old_soz_dt = datetime.strptime(old_sozlesme_str, "%Y-%m-%d")
+                                    delta = (new_sozlesme_dt - old_soz_dt).days
+                                    if delta != 0 and final_teslim_str:
+                                        old_tes_dt = datetime.strptime(final_teslim_str, "%Y-%m-%d")
+                                        final_teslim_str = (old_tes_dt + timedelta(days=delta)).strftime("%Y-%m-%d")
+                            final_start_str = str(r[26])[:10] if len(r) > 26 and r[26] else ""
+                            if self.cb_update_ise_baslama.isChecked():
+                                final_start_str = self.ise_baslama_edit.date().toString("yyyy-MM-dd")
+                            if final_teslim_str and final_start_str:
+                                start_dt = datetime.strptime(final_start_str, "%Y-%m-%d")
+                                end_dt = datetime.strptime(final_teslim_str, "%Y-%m-%d")
+                                calc_dur = (end_dt - start_dt).days + 1
+                                old_dur = str(r[27]) if len(r) > 27 and r[27] else ""
+                                if old_dur != f"{calc_dur} Gün":
+                                    update_record(rowid, "Isin Suresi", f"{calc_dur} Gün", cursor)
+                        except Exception:
+                            pass
+                    if self.cb_update_ihale_tarihi.isChecked(): update_record(rowid, "Ihale Tarihi", self.ihale_tarihi_edit.date().toString("yyyy-MM-dd"), cursor)
+                    if self.cb_update_ise_baslama.isChecked(): update_record(rowid, "Ise Baslama Tarihi", self.ise_baslama_edit.date().toString("yyyy-MM-dd"), cursor)
+                    if self.cb_update_cari.isChecked(): update_record(rowid, "Cari No", self.cari_edit.text(), cursor)
+                    if self.cb_update_proje.isChecked(): update_record(rowid, "Proje No", self.proje_edit.text(), cursor)
+                    if self.cb_update_kart.isChecked(): update_record(rowid, "Kart No", self.kart_edit.text(), cursor)
 
-                if do_miktar: update_record(rowid, "Parti Miktari", new_miktar)
-                if do_malzeme: update_record(rowid, "Malzeme Detayi", new_malzeme)
-                if do_tutar: update_record(rowid, "Parti Tutari", new_tutar)
-                if do_aciklama: update_record(rowid, "Aciklama", new_aciklama)
-                if do_test_start: update_record(rowid, "Testler Basladi Detay", new_test_start)
-                if do_test_result: update_record(rowid, "Test Sonuclari Geldi Detay", new_test_result)
+                    for state_text, state_val in status_updates.items():
+                        db_col = COLUMN_MAPPING.get(state_text, state_text)
+                        update_record(rowid, db_col, state_val, cursor)
 
-                # Yeni Gelişmiş Alanlar Toplu Güncelleme
-                if self.cb_update_turu.isChecked(): update_record(rowid, "Ihale Turu", self.turu_edit.currentText())
-                if self.cb_update_usulu.isChecked(): update_record(rowid, "Ihale Usulu", self.usulu_edit.currentText())
-                if self.cb_update_yak_maliyet.isChecked(): update_record(rowid, "Yak. Maliyet", self.yak_maliyet_edit.text())
-                if self.cb_update_isin_suresi.isChecked():
-                    update_record(rowid, "Isin Suresi", self.isin_suresi_edit.text())
-                else:
-                    # Otomatik İşin Süresi Hesaplaması
-                    try:
-                        final_teslim_str = str(r[5])[:10] if len(r) > 5 and r[5] else ""
-                        if do_sozlesme:
-                            old_sozlesme_str = str(r[17])[:10] if len(r) > 17 and r[17] else ""
-                            if old_sozlesme_str:
-                                old_soz_dt = datetime.strptime(old_sozlesme_str, "%Y-%m-%d")
-                                delta = (new_sozlesme_dt - old_soz_dt).days
-                                if delta != 0 and final_teslim_str:
-                                    old_tes_dt = datetime.strptime(final_teslim_str, "%Y-%m-%d")
-                                    final_teslim_str = (old_tes_dt + timedelta(days=delta)).strftime("%Y-%m-%d")
+                    update_record(rowid, "SonGuncelleme", audit_log, cursor)
 
-                        final_start_str = str(r[26])[:10] if len(r) > 26 and r[26] else ""
-                        if self.cb_update_ise_baslama.isChecked():
-                            final_start_str = self.ise_baslama_edit.date().toString("yyyy-MM-dd")
-
-                        if final_teslim_str and final_start_str:
-                            start_dt = datetime.strptime(final_start_str, "%Y-%m-%d")
-                            end_dt = datetime.strptime(final_teslim_str, "%Y-%m-%d")
-                            calc_dur = (end_dt - start_dt).days + 1
-
-                            old_dur = str(r[27]) if len(r) > 27 and r[27] else ""
-                            if old_dur != f"{calc_dur} Gün":
-                                update_record(rowid, "Isin Suresi", f"{calc_dur} Gün")
-                    except Exception:
-                        pass
-                if self.cb_update_ihale_tarihi.isChecked(): update_record(rowid, "Ihale Tarihi", self.ihale_tarihi_edit.date().toString("yyyy-MM-dd"))
-                if self.cb_update_ise_baslama.isChecked(): update_record(rowid, "Ise Baslama Tarihi", self.ise_baslama_edit.date().toString("yyyy-MM-dd"))
-                if self.cb_update_cari.isChecked(): update_record(rowid, "Cari No", self.cari_edit.text())
-                if self.cb_update_proje.isChecked(): update_record(rowid, "Proje No", self.proje_edit.text())
-                if self.cb_update_kart.isChecked(): update_record(rowid, "Kart No", self.kart_edit.text())
-
-                for state_text, state_val in status_updates.items():
-                    db_col = COLUMN_MAPPING.get(state_text, state_text)
-                    update_record(rowid, db_col, state_val)
-
-                update_record(rowid, "SonGuncelleme", audit_log)
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
 
             ikn_list = sorted(set(str(r[1]) for r in self.records if len(r) > 1 and r[1]))
             firma_list = sorted(set(str(r[2]) for r in self.records if len(r) > 2 and r[2]))
@@ -2883,6 +2979,61 @@ class SummaryWidget(QWidget):
         header_layout.addWidget(self.cb_firm)
         header_layout.addWidget(QLabel("İhale:"))
         header_layout.addWidget(self.cb_tender)
+
+        # İşlem Adımı multi-select (radio mantığı: her adımın ✓ ve ✗ seçeneği)
+        self.cb_step_model = QStandardItemModel()
+        self.cb_step = QComboBox()
+        self.cb_step.setEditable(True)
+        self.cb_step.lineEdit().setReadOnly(True)
+        self.cb_step.lineEdit().setPlaceholderText("İşlem adımı seçin...")
+        self.cb_step.setView(QListView())
+        self.cb_step.setItemDelegate(DropdownDelegate())
+        self.cb_step.setMinimumWidth(220)
+
+        self.step_pairs = [
+            ("✓ Ambar Teslimi Gerçekleşti", "✗ Ambar Teslimi Gerçekleşmedi", 7),
+            ("✓ Heyet Başkanına Haber Verildi", "✗ Heyet Başkanına Haber Verilmedi", 19),
+            ("✓ Testler Başladı", "✗ Testler Başlamadı", 8),
+            ("✓ Test Sonuçları Geldi", "✗ Test Sonuçları Gelmedi", 9),
+            ("✓ Kabul Raporu imzada", "✗ Kabul Raporu imzada değil", 10),
+            ("✓ Kabul Yapıldı", "✗ Kabul Yapılmadı", 11),
+            ("✓ Ödeme Belgesi Oluşturuldu", "✗ Ödeme Belgesi Oluşturulmadı", 13)
+        ]
+
+        # En üste kontrol butonları
+        select_all_item = QStandardItem("Tümünü Seç")
+        select_all_item.setCheckable(False)
+        select_all_item.setForeground(QColor("#6366f1"))
+        font = QFont()
+        font.setBold(True)
+        select_all_item.setFont(font)
+        self.cb_step_model.appendRow(select_all_item)
+
+        deselect_all_item = QStandardItem("Tümünü Seçme")
+        deselect_all_item.setCheckable(False)
+        deselect_all_item.setForeground(QColor("#ef4444"))
+        font2 = QFont()
+        font2.setBold(True)
+        deselect_all_item.setFont(font2)
+        self.cb_step_model.appendRow(deselect_all_item)
+
+        for checked_text, unchecked_text, col_idx in self.step_pairs:
+            item_on = QStandardItem(checked_text)
+            item_on.setCheckable(True)
+            item_on.setCheckState(Qt.CheckState.Unchecked)
+            self.cb_step_model.appendRow(item_on)
+
+            item_off = QStandardItem(unchecked_text)
+            item_off.setCheckable(True)
+            item_off.setCheckState(Qt.CheckState.Unchecked)
+            self.cb_step_model.appendRow(item_off)
+
+        self.cb_step.setModel(self.cb_step_model)
+        self.cb_step_model.itemChanged.connect(self.on_step_changed)
+        self.cb_step.view().viewport().installEventFilter(self)
+
+        header_layout.addWidget(QLabel("İşlem Adımı Filtresi:"))
+        header_layout.addWidget(self.cb_step)
         header_layout.addWidget(btn_clr)
         header_layout.addWidget(self.btn_show_all)
 
@@ -2897,6 +3048,7 @@ class SummaryWidget(QWidget):
 
     def refresh_summary(self):
         show_all = self.btn_show_all.isChecked()
+        self.btn_show_all.setText("Günceli Göster" if show_all else "Tümünü Göster")
         self.all_summary_data = get_summary_data(show_all=show_all)
         self.update_firm_dropdown()
 
@@ -2935,9 +3087,23 @@ class SummaryWidget(QWidget):
         self.cb_tender.blockSignals(False)
         self.apply_filters()
 
+    def get_step_filters(self):
+        filters = {}
+        for i in range(self.cb_step_model.rowCount()):
+            item = self.cb_step_model.item(i)
+            if not item or item.checkState() != Qt.CheckState.Checked:
+                continue
+            text = item.text()
+            for checked_text, unchecked_text, col_idx in self.step_pairs:
+                if text == checked_text:
+                    filters[col_idx] = True
+                elif text == unchecked_text:
+                    filters[col_idx] = False
+        return filters
+
     def apply_filters(self):
-        # Yüklenici ya da iş seçilirse "Tümünü Göster" butonunu aktif et ve mavi yap
-        is_filtered = (self.cb_firm.currentIndex() > 0 or self.cb_tender.currentIndex() > 0)
+        step_filters = self.get_step_filters()
+        is_filtered = (self.cb_firm.currentIndex() > 0 or self.cb_tender.currentIndex() > 0 or len(step_filters) > 0)
         self.btn_show_all.setEnabled(is_filtered)
 
         # Stil güncelleme: Aktifse mavi (default), pasifse gri (SecondaryBtn)
@@ -2965,6 +3131,15 @@ class SummaryWidget(QWidget):
                     (f == "Tümü" or str(r[2]) == f) and
                     (t == "Tümü" or str(r[3]) == t)]
 
+        if step_filters:
+            def matches_step_filters(record):
+                for col_idx, required_state in step_filters.items():
+                    is_checked = col_idx < len(record) and _is_checked(record[col_idx])
+                    if is_checked != required_state:
+                        return False
+                return True
+            filtered = [r for r in filtered if matches_step_filters(r)]
+
         # Sorting Logic
         if s == "Tarihe Göre":
             # Index 5 is 'Parti Son Teslim Tarihi'
@@ -2986,11 +3161,83 @@ class SummaryWidget(QWidget):
         for record in filtered:
             self.cards_layout.addWidget(self.create_card(record))
 
+    def on_step_changed(self):
+        # Radio mantığı: her çiftten sadece biri seçili kalabilir
+        self.cb_step_model.blockSignals(True)
+        for checked_text, unchecked_text, _ in self.step_pairs:
+            on_checked = False
+            off_checked = False
+            for i in range(self.cb_step_model.rowCount()):
+                item = self.cb_step_model.item(i)
+                if item:
+                    if item.text() == checked_text and item.checkState() == Qt.CheckState.Checked:
+                        on_checked = True
+                    elif item.text() == unchecked_text and item.checkState() == Qt.CheckState.Checked:
+                        off_checked = True
+            if on_checked and off_checked:
+                for i in range(self.cb_step_model.rowCount()):
+                    item = self.cb_step_model.item(i)
+                    if item and item.text() == unchecked_text and item.checkState() == Qt.CheckState.Checked:
+                        item.setCheckState(Qt.CheckState.Unchecked)
+        self.cb_step_model.blockSignals(False)
+
+        step_filters = self.get_step_filters()
+        display_parts = []
+        for col_idx, state in step_filters.items():
+            for checked_text, unchecked_text, ci in self.step_pairs:
+                if ci == col_idx:
+                    display_parts.append(checked_text if state else unchecked_text)
+                    break
+        display_text = ", ".join(display_parts) if display_parts else "Tümü"
+        self.cb_step.lineEdit().setText(display_text)
+        self.cb_step.setToolTip(display_text)
+        self.apply_filters()
+
+    def step_select_all(self):
+        self.cb_step_model.blockSignals(True)
+        for i in range(self.cb_step_model.rowCount()):
+            item = self.cb_step_model.item(i)
+            if item and item.isCheckable():
+                text = item.text()
+                for checked_text, _, _ in self.step_pairs:
+                    if text == checked_text:
+                        item.setCheckState(Qt.CheckState.Checked)
+                        break
+                else:
+                    item.setCheckState(Qt.CheckState.Unchecked)
+        self.cb_step_model.blockSignals(False)
+        self.on_step_changed()
+
+    def step_deselect_all(self):
+        self.cb_step_model.blockSignals(True)
+        for i in range(self.cb_step_model.rowCount()):
+            item = self.cb_step_model.item(i)
+            if item and item.isCheckable():
+                item.setCheckState(Qt.CheckState.Unchecked)
+        self.cb_step_model.blockSignals(False)
+        self.on_step_changed()
+
     def clear_filters(self):
         self.cb_firm.setCurrentIndex(0)
         self.cb_tender.setCurrentIndex(0)
+        self.step_deselect_all()
         self.cb_sort.setCurrentIndex(0)
         self.apply_filters()
+
+    def eventFilter(self, obj, event):
+        if obj == self.cb_step.view().viewport() and event.type() == QEvent.Type.MouseButtonRelease:
+            index = self.cb_step.view().indexAt(event.position().toPoint())
+            item = self.cb_step_model.itemFromIndex(index)
+            if item:
+                text = item.text()
+                if text == "Tümünü Seç":
+                    self.step_select_all()
+                elif text == "Tümünü Seçme":
+                    self.step_deselect_all()
+                else:
+                    item.setCheckState(Qt.CheckState.Unchecked if item.checkState() == Qt.CheckState.Checked else Qt.CheckState.Checked)
+            return True
+        return super().eventFilter(obj, event)
 
     def create_card(self, record):
         is_completed = (len(record) > 11 and _is_checked(record[11]))
@@ -3165,7 +3412,7 @@ class TenderWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent_window = parent
-        self.current_status_filter = "all" # all, active, completed
+        self.current_status_filter = "active" # all, active, completed
         self.setup_ui()
 
     def setup_ui(self):
@@ -3209,7 +3456,7 @@ class TenderWidget(QWidget):
 
         layout.addLayout(btn_layout)
 
-        self.btn_all.setChecked(True)
+        self.btn_active.setChecked(True)
         self.btn_all.clicked.connect(lambda: self.set_status_filter("all"))
         self.btn_active.clicked.connect(lambda: self.set_status_filter("active"))
         self.btn_completed.clicked.connect(lambda: self.set_status_filter("completed"))
@@ -3726,6 +3973,13 @@ class FirmSummaryWidget(QWidget):
         self.btn_export.clicked.connect(self.export_to_csv)
         filter_layout.addWidget(self.btn_export)
 
+        filter_layout.addSpacing(5)
+        self.btn_export_all = QPushButton("📋 Tüm İhale (Sözleşme) Bilgilerini CSV Olarak Kaydet")
+        self.btn_export_all.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_export_all.setObjectName("InfoBtn")
+        self.btn_export_all.clicked.connect(self.export_all_tenders_to_csv)
+        filter_layout.addWidget(self.btn_export_all)
+
         filter_layout.addStretch()
 
         self.total_label = QLabel("<b>GENEL TOPLAM: 0,00 TL</b>")
@@ -3734,6 +3988,15 @@ class FirmSummaryWidget(QWidget):
         filter_layout.addWidget(self.total_label)
 
         layout.addLayout(filter_layout)
+
+        # Bilgi baloncuğu
+        info_lbl = QLabel("💡 Firma detaylarını görüntülemek için satıra <b>çift tıklayın</b>.")
+        info_lbl.setStyleSheet(
+            "background-color: #e0f2fe; color: #0369a1; font-size: 12px; "
+            "padding: 6px 12px; border-radius: 6px; border: 1px solid #7dd3fc;"
+        )
+        info_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(info_lbl)
 
         # Table
         self.table = QTableWidget()
@@ -3791,6 +4054,51 @@ class FirmSummaryWidget(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "Hata", f"CSV dışa aktarma hatası:\n{e}")
 
+    def export_all_tenders_to_csv(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Tüm İhale Bilgilerini CSV Olarak Kaydet", "tum_ihale_bilgileri.csv", "CSV Dosyası (*.csv)")
+        if not path:
+            return
+        try:
+            all_tenders = get_aggregated_tender_data()
+            with open(path, mode='w', encoding='utf-8-sig', newline='') as file:
+                writer = csv.writer(file, delimiter=';')
+                writer.writerow([
+                    "IKN", "Yüklenici Firma", "İhale Adı", "Sözleşme Tutarı",
+                    "Toplam Parti Sayısı", "Sözleşme Tarihi", "İhale Türü",
+                    "İhale Usulü", "Yak. Maliyet", "İhale Tarihi",
+                    "İşe Başlama Tarihi", "İşin Süresi", "İşin Bitiş (Son parti teslim) Tarihi"
+                ])
+                for t in all_tenders:
+                    parts = t["parts"]
+                    p0 = parts[0] if parts else []
+                    sozlesme_tarihi = p0[17] if len(p0) > 17 else ""
+                    ihale_turu = p0[22] if len(p0) > 22 else ""
+                    ihale_usulu = p0[23] if len(p0) > 23 else ""
+                    yak_raw = p0[24] if len(p0) > 24 and p0[24] else 0
+                    try:
+                        yak_num = float(yak_raw) if not isinstance(yak_raw, (int, float)) else float(yak_raw)
+                    except:
+                        yak_num = 0.0
+                    yak_maliyet = display_money(yak_num)
+                    ihale_tarihi = p0[25] if len(p0) > 25 else ""
+                    ise_baslama = p0[26] if len(p0) > 26 else ""
+                    isin_suresi = p0[27] if len(p0) > 27 else ""
+                    teslim_tarihleri = [p[5] for p in parts if len(p) > 5 and p[5]]
+                    isin_bitis = max(teslim_tarihleri) if teslim_tarihleri else ""
+
+                    writer.writerow([
+                        t["ikn"], t["firma"], t["ihale"],
+                        display_money(t["total_amount"]),
+                        len(parts),
+                        sozlesme_tarihi, ihale_turu, ihale_usulu,
+                        yak_maliyet, ihale_tarihi, ise_baslama,
+                        isin_suresi, isin_bitis,
+                    ])
+            QMessageBox.information(self, "Başarılı", f"Tüm ihale bilgileri başarıyla dışa aktarıldı:\n{path}")
+            log_action("CSV Dışa Aktar (Tüm İhale Bilgileri Özet)", f"Dosya: {path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"CSV dışa aktarma hatası:\n{e}")
+
     def refresh_data(self):
         # Yıl listesini güncelle (sadece ilk kez veya veri değiştiğinde)
         if self.cb_year.count() <= 1:
@@ -3824,6 +4132,9 @@ class FirmSummaryWidget(QWidget):
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(filtered))
 
+        # Varsayılan sıralama: Yüklenici Adı (Türkçe karakter desteğiyle)
+        filtered.sort(key=lambda f: tr_key(f["name"]))
+
         for i, f in enumerate(filtered):
             # Name
             self.table.setItem(i, 0, QTableWidgetItem(f["name"]))
@@ -3847,6 +4158,7 @@ class FirmSummaryWidget(QWidget):
             self.table.setItem(i, 3, v_item)
 
         self.table.setSortingEnabled(True)
+        self.table.sortByColumn(0, Qt.SortOrder.AscendingOrder)
 
 # --- ÖZEL TAKVİM BİLEŞENİ ---
 class CustomCalendar(QCalendarWidget):
@@ -3926,10 +4238,10 @@ class CalendarWidget(QWidget):
         self.calendar.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
         self.calendar.selectionChanged.connect(self.date_selected)
 
-        # Takvim boyutunu artır
-        self.calendar.setMinimumHeight(450)
-        self.calendar.setMinimumWidth(550)
-        self.calendar.setMaximumWidth(650)
+        # Takvim boyutu (%20 küçültüldü)
+        self.calendar.setMinimumHeight(360)
+        self.calendar.setMinimumWidth(440)
+        self.calendar.setMaximumWidth(520)
 
         # Takvim stilini modernleştir
         # Ay/Yıl butonlarını beyaz yapmak için: QToolButton renkleri
@@ -3993,7 +4305,7 @@ class CalendarWidget(QWidget):
         # Sayfa (Ay) değiştiğinde özeti güncelle
         self.calendar.currentPageChanged.connect(self.update_monthly_summary)
 
-        layout.addLayout(left_panel, stretch=0)
+        layout.addLayout(left_panel, stretch=0)  # Soldaki alan sabit
 
         # Sağ Panel: Günlük Detaylar
         right_panel = QVBoxLayout()
@@ -4354,7 +4666,7 @@ class DetailWidget(QWidget):
 
 
     def load_column_settings(self):
-        settings = QSettings("IhaleSystem", f"UserPrefs/{CURRENT_USER}")
+        settings = QSettings("IhaleSystem", f"UserPrefs/{Session.user}")
         # IKN(0), Firma(1), Ihale(2), Parti(4), Termin(5), Miktar(6), Tutar(8), Aciklama(16)
         min_indices = [0, 1, 2, 4, 5, 6, 8, 16]
 
@@ -4637,7 +4949,7 @@ class DetailWidget(QWidget):
             btn_edit.clicked.connect(lambda ch, rec=r: self.open_edit(rec))
             action_layout.addWidget(btn_edit)
 
-            if CURRENT_USER_ROLE == "admin":
+            if Session.can_delete:
                 btn_delete = QPushButton("SİL")
                 btn_delete.setStyleSheet("background-color: #f44336; color: white; border-radius: 4px; padding: 4px; font-weight: bold;")
                 btn_delete.clicked.connect(lambda ch, rec=r: self.delete_row(rec))
@@ -4904,7 +5216,7 @@ class DateShiftDialog(QDialog):
 
         try:
             timestamp = datetime.now().strftime("%d.%m.%Y %H:%M")
-            audit_log = f"Tarih Öteleme ({days} gün): {CURRENT_USER} ({timestamp})"
+            audit_log = f"Tarih Öteleme ({days} gün): {Session.user} ({timestamp})"
 
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -4963,7 +5275,7 @@ class LogWidget(QWidget):
         filter_layout = QHBoxLayout()
         filter_layout.addWidget(QLabel("🔍 Ara:"))
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("ID, tarih, kullanıcı, işlem veya detay...")
+        self.search_edit.setPlaceholderText("IKN, firma, tarih, kullanıcı, işlem veya detay...")
         self.search_edit.textChanged.connect(self.apply_log_filter)
         filter_layout.addWidget(self.search_edit, stretch=2)
 
@@ -5005,7 +5317,7 @@ class LogWidget(QWidget):
         self.table.verticalHeader().setDefaultSectionSize(50)
 
         header = self.table.horizontalHeader()
-        self.table.setColumnWidth(0, 60)   # ID
+        self.table.setColumnWidth(0, 70)   # ID
         self.table.setColumnWidth(1, 140)  # Tarih
         self.table.setColumnWidth(2, 100)  # Kullanıcı
         self.table.setColumnWidth(3, 150)  # İşlem
@@ -5054,6 +5366,35 @@ class LogWidget(QWidget):
                     rect = fm.boundingRect(0, 0, detay_col - 10, 0, Qt.TextFlag.TextWordWrap, item.text())
                     self.table.setRowHeight(i, min(rect.height() + 10, 120))
 
+    def _extract_ikn_firma(self, details):
+        ikn = ""
+        firma = ""
+        if not details:
+            return "-"
+        s = str(details)
+        # "IKN: xxx" desenini ara
+        if "IKN:" in s:
+            # IKN'dan sonraki kısmı al
+            after_ikn = s.split("IKN:")[1].strip()
+            # Virgül, | veya boşlukla biten kısmı al
+            for sep in [",", "|", " "]:
+                if sep in after_ikn:
+                    ikn = after_ikn.split(sep)[0].strip()
+                    break
+            if not ikn:
+                ikn = after_ikn.split()[0] if after_ikn else ""
+        if "Firma:" in s:
+            after_firma = s.split("Firma:")[1].strip()
+            for sep in ["|", ","]:
+                if sep in after_firma:
+                    firma = after_firma.split(sep)[0].strip()
+                    break
+            else:
+                firma = after_firma
+        if ikn and firma:
+            return f"{ikn} | {firma}"
+        return ikn or firma or "-"
+
     def apply_log_filter(self):
         txt = self.search_edit.text().lower()
         user_f = self.cb_user.currentText()
@@ -5074,7 +5415,6 @@ class LogWidget(QWidget):
         for i, log in enumerate(filtered):
             id_item = SortableTableWidgetItem(str(log[0]))
             id_item.setData(Qt.ItemDataRole.UserRole, log[0])
-            id_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(i, 0, id_item)
             self.table.setItem(i, 1, QTableWidgetItem(str(log[1])))
             self.table.setItem(i, 2, QTableWidgetItem(str(log[2])))
@@ -5096,7 +5436,7 @@ class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("⚙️ Ayarlar")
-        self.setFixedWidth(600)
+        self.setFixedWidth(800)
         self.parent_window = parent
         self.setup_ui()
 
@@ -5284,6 +5624,38 @@ class SettingsDialog(QDialog):
 
         tabs.addTab(usulu_tab, "📋 İhale Usulü")
 
+        # Tab 5: Yedek Yönetimi
+        backup_tab = QWidget()
+        backup_layout = QVBoxLayout(backup_tab)
+        backup_layout.addWidget(QLabel("<b>💾 Yedek Dosyaları:</b>"))
+
+        self.backup_list = QtWidgets.QListWidget()
+        backup_layout.addWidget(self.backup_list)
+
+        backup_btn_row = QHBoxLayout()
+        btn_refresh_backup = QPushButton("🔄 Listeyi Yenile")
+        btn_refresh_backup.clicked.connect(self.refresh_backup_list)
+        backup_btn_row.addWidget(btn_refresh_backup)
+
+        btn_backup_now = QPushButton("💾 Yedek Al")
+        btn_backup_now.setObjectName("SuccessBtn")
+        btn_backup_now.clicked.connect(self.do_backup)
+        backup_btn_row.addWidget(btn_backup_now)
+
+        btn_restore = QPushButton("📥 Seçili Yedeği Geri Yükle")
+        btn_restore.setObjectName("WarningBtn")
+        btn_restore.clicked.connect(self.restore_backup)
+        backup_btn_row.addWidget(btn_restore)
+
+        btn_delete_backup = QPushButton("🗑️ Seçili Yedeği Sil")
+        btn_delete_backup.setObjectName("DangerBtn")
+        btn_delete_backup.clicked.connect(self.delete_backup)
+        backup_btn_row.addWidget(btn_delete_backup)
+
+        backup_layout.addLayout(backup_btn_row)
+        self.refresh_backup_list()
+        tabs.addTab(backup_tab, "💾 Yedek Yönetimi")
+
         layout.addWidget(tabs)
 
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
@@ -5355,7 +5727,7 @@ class SettingsDialog(QDialog):
     def save_settings(self):
         # Sütun ayarlarını uygula ve kaydet
         detail_widget = self.parent_window.detail_widget
-        settings = QSettings("IhaleSystem", f"UserPrefs/{CURRENT_USER}")
+        settings = QSettings("IhaleSystem", f"UserPrefs/{Session.user}")
 
         for col_data, cb in self.col_checkboxes:
             is_visible = cb.isChecked()
@@ -5386,6 +5758,94 @@ class SettingsDialog(QDialog):
                 cb.setChecked(False) # İşlem adımları asgari değildir
             else:
                 cb.setChecked(col_data in min_indices)
+
+    # --- Yedek Yönetimi ---
+    def get_backup_dir(self):
+        if getattr(sys, 'frozen', False):
+            base = os.path.dirname(sys.executable)
+        else:
+            base = os.path.dirname(os.path.abspath(__file__))
+        d = os.path.join(base, 'Yedekler')
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    def refresh_backup_list(self):
+        self.backup_list.clear()
+        backup_dir = self.get_backup_dir()
+        if not os.path.exists(backup_dir):
+            return
+        files = sorted([f for f in os.listdir(backup_dir) if f.endswith('.db')], reverse=True)
+        for f in files:
+            fpath = os.path.join(backup_dir, f)
+            size = os.path.getsize(fpath)
+            mtime = datetime.fromtimestamp(os.path.getmtime(fpath)).strftime("%d.%m.%Y %H:%M")
+            self.backup_list.addItem(f"[{mtime}] {f} ({size/1024:.0f} KB)")
+
+    def do_backup(self):
+        backup_dir = self.get_backup_dir()
+        if getattr(sys, 'frozen', False):
+            base = os.path.dirname(sys.executable)
+        else:
+            base = os.path.dirname(os.path.abspath(__file__))
+        db_path = os.path.join(base, 'veriler.db')
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        backup_file = os.path.join(backup_dir, f"veriler_yedek_{timestamp}.db")
+        try:
+            shutil.copy(db_path, backup_file)
+            log_action("Manuel Yedekleme", f"Dosya: {backup_file}")
+            QMessageBox.information(self, "Başarılı", f"Yedek alındı:\n{backup_file}")
+            self.refresh_backup_list()
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Yedekleme hatası: {e}")
+
+    def restore_backup(self):
+        current = self.backup_list.currentItem()
+        if not current:
+            QMessageBox.warning(self, "Uyarı", "Lütfen bir yedek dosyası seçin.")
+            return
+        name = current.text()
+        fname = name.split("] ", 1)[-1].split(" (")[0] if "] " in name else name
+        reply = QMessageBox.question(self, "Geri Yükle",
+            f"'{fname}' dosyasından geri yüklemek tüm mevcut verilerinizi değiştirir!\n\nDevam etmek istediğinize emin misiniz?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        backup_dir = self.get_backup_dir()
+        backup_path = os.path.join(backup_dir, fname)
+        if not os.path.exists(backup_path):
+            QMessageBox.critical(self, "Hata", "Dosya bulunamadı.")
+            return
+        if getattr(sys, 'frozen', False):
+            base = os.path.dirname(sys.executable)
+        else:
+            base = os.path.dirname(os.path.abspath(__file__))
+        db_path = os.path.join(base, 'veriler.db')
+        try:
+            shutil.copy(backup_path, db_path)
+            log_action("Yedek Geri Yükleme", f"Dosya: {fname}")
+            QMessageBox.information(self, "Başarılı", "Veritabanı geri yüklendi. Uygulamanın yeniden başlatılması önerilir.")
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Geri yükleme hatası: {e}")
+
+    def delete_backup(self):
+        current = self.backup_list.currentItem()
+        if not current:
+            return
+        name = current.text()
+        fname = name.split("] ", 1)[-1].split(" (")[0] if "] " in name else name
+        reply = QMessageBox.question(self, "Silme Onayı",
+            f"'{fname}' yedek dosyasını silmek istediğinize emin misiniz?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        backup_dir = self.get_backup_dir()
+        fpath = os.path.join(backup_dir, fname)
+        try:
+            os.remove(fpath)
+            log_action("Yedek Silme", f"Dosya: {fname}")
+            self.refresh_backup_list()
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Silme hatası: {e}")
 
     # --- İhale Türü Yönetimi ---
     def refresh_turu_list(self):
@@ -5518,7 +5978,7 @@ class AboutDialog(QDialog):
 
         # Info Text
         info_text = """
-        <h3 style='color: #6366f1; margin-bottom:0;'>İhale Takip Uygulaması v7.20</h3>
+        <h3 style='color: #6366f1; margin-bottom:0;'>İhale Takip Uygulaması v7.41</h3>
         <br>
         <b>Geliştirici Bilgileri:</b></p>
         <ul>
@@ -5549,11 +6009,74 @@ class AboutDialog(QDialog):
         btn_close.clicked.connect(self.accept)
         layout.addWidget(btn_close, alignment=Qt.AlignCenter)
 
+class ShortcutsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Klavye Kısayolları")
+        self.setFixedSize(520, 500)
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+
+        title = QLabel("Klavye Kısayolları")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #1e293b;")
+        layout.addWidget(title, alignment=Qt.AlignCenter)
+
+        layout.addSpacing(12)
+
+        shortcuts = [
+            ("Ctrl+N", "Yeni ihale kaydı ekle"),
+            ("Ctrl+F", "Arama çubuğuna odaklan (Tüm İhale ve Parti Bilgileri Sayfasında)"),
+            ("Alt+A", "Ayarlar penceresini aç"),
+            ("F5", "Tüm verileri yenile"),
+            ("Ctrl+1", "Güncel İhale sekmesine geç"),
+            ("Ctrl+2", "Tüm İhale Bilgileri sekmesine geç"),
+            ("Ctrl+3", "Takvim Görünümü sekmesine geç"),
+            ("Ctrl+4", "Sözleşme Bilgileri sekmesine geç"),
+            ("Ctrl+5", "Firma Özetleri sekmesine geç"),
+            ("Ctrl+6", "İşlem Kayıtları sekmesine geç"),
+        ]
+
+        table = QTableWidget(len(shortcuts), 2)
+        table.setHorizontalHeaderLabels(["Kısayol", "Açıklama"])
+        table.horizontalHeader().setStretchLastSection(True)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+        for row, (key, desc) in enumerate(shortcuts):
+            item_key = QTableWidgetItem(key)
+            item_key.setTextAlignment(Qt.AlignCenter)
+            font = QFont()
+            font.setBold(True)
+            font.setFamily("Consolas")
+            item_key.setFont(font)
+            item_key.setForeground(QColor("#6366f1"))
+            table.setItem(row, 0, item_key)
+
+            item_desc = QTableWidgetItem(desc)
+            table.setItem(row, 1, item_desc)
+
+        table.setMinimumHeight(len(shortcuts) * 32 + 30)
+        table.setMaximumHeight(len(shortcuts) * 32 + 30)
+        layout.addWidget(table)
+
+        layout.addSpacing(12)
+
+        btn_close = QPushButton("Kapat")
+        btn_close.setFixedWidth(100)
+        btn_close.clicked.connect(self.accept)
+        layout.addWidget(btn_close, alignment=Qt.AlignCenter)
+
 # --- ANA PENCERE ---
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("İhale Takip Sistemi")
+        self.setWindowTitle("İhale (Sözleşme) Takip Sistemi")
         self.resize(1700, 900)
         self.showMaximized()
 
@@ -5566,7 +6089,7 @@ class MainWindow(QMainWindow):
         top_bar = QHBoxLayout()
         top_bar.addStretch()
 
-        self.btn_user = QPushButton(f"👤 {CURRENT_USER}")
+        self.btn_user = QPushButton(f"👤 {Session.user}")
         self.btn_user.setObjectName("PrimaryBtn")
         self.btn_user.setFixedWidth(120)
         self.btn_user.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -5606,6 +6129,15 @@ class MainWindow(QMainWindow):
 
         top_bar.addSpacing(15)
 
+        self.btn_shortcuts = QPushButton("⌨️ Kısayollar")
+        self.btn_shortcuts.setObjectName("PrimaryBtn")
+        self.btn_shortcuts.clicked.connect(self.show_shortcuts)
+        self.btn_shortcuts.setFixedWidth(120)
+        self.btn_shortcuts.setCursor(Qt.CursorShape.PointingHandCursor)
+        top_bar.addWidget(self.btn_shortcuts)
+
+        top_bar.addSpacing(5)
+
         self.btn_about = QPushButton("ℹ️ Hakkında")
         self.btn_about.setObjectName("PrimaryBtn")
         self.btn_about.clicked.connect(self.show_about)
@@ -5629,10 +6161,13 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.tender_widget, "🏢 Sözleşme Bilgileri")
         self.tabs.addTab(self.firm_widget, "🏭 Firma Özetleri")
 
-        if CURRENT_USER_ROLE == "admin":
+        if Session.can_view_logs:
             self.tabs.addTab(self.log_widget, "📜 İşlem Kayıtları")
 
         layout.addWidget(self.tabs)
+
+        # Klavye kısayolları (widget'lar hazır olduktan sonra)
+        self.setup_shortcuts()
 
     def refresh_all(self):
         self.summary_widget.refresh_summary()
@@ -5640,11 +6175,14 @@ class MainWindow(QMainWindow):
         self.detail_widget.refresh_data()
         self.tender_widget.refresh_data()
         self.firm_widget.refresh_data()
-        if CURRENT_USER_ROLE == "admin":
+        if Session.can_view_logs:
             self.log_widget.refresh_logs()
 
     def show_about(self):
         AboutDialog(self).exec()
+
+    def show_shortcuts(self):
+        ShortcutsDialog(self).exec()
 
     def show_user_mgmt(self):
         UserManagementDialog(self).exec()
@@ -5666,15 +6204,34 @@ class MainWindow(QMainWindow):
         msg.exec()
 
         if msg.clickedButton() == btn_yes:
+            Session.logout()
             settings = QSettings("IhaleSystem", "LoginSettings")
             settings.setValue("auto_login", "false")
             # Set flag for main loop
             self.logout_requested = True
             self.close()
 
+    def setup_shortcuts(self):
+        QShortcut(QKeySequence("Ctrl+N"), self, self.detail_widget.open_new_tender)
+        QShortcut(QKeySequence("Ctrl+F"), self, self.focus_search)
+        QShortcut(QKeySequence("Alt+A"), self, self.show_settings)
+        QShortcut(QKeySequence("F5"), self, self.refresh_all)
+        for i, key in enumerate(["Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4", "Ctrl+5", "Ctrl+6"],0):
+            QShortcut(QKeySequence(key), self, lambda idx=i: self.tabs.setCurrentIndex(idx))
+
+    def focus_search(self):
+        self.tabs.setCurrentWidget(self.detail_widget)
+        self.detail_widget.search.setFocus()
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+
+    # Veritabanı migration (yeni alanları otomatik ekle)
+    try:
+        run_migrations()
+    except Exception as e:
+        print(f"Migration hatası: {e}")
 
     # Veritabanını kontrol et ve gerekirse haftalık yedek al
     try:
@@ -5700,8 +6257,8 @@ if __name__ == "__main__":
                 cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password))
                 user_data = cursor.fetchone()
                 if user_data:
-                    CURRENT_USER = username
-                    CURRENT_USER_ROLE = user_data[2] if len(user_data) > 2 else ("admin" if username == "admin" else "user")
+                    role = user_data[2] if len(user_data) > 2 else ("admin" if username == "admin" else "user")
+                    Session.login(username, role)
                     login_success = True
                 conn.close()
             except Exception as e:
