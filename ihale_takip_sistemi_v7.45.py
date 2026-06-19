@@ -48,7 +48,7 @@ class Field(IntEnum):
     YAK_MALIYET = 24
     IHALE_TARIHI = 25
     ISE_BASLAMA = 26
-    ISIN_SURESI = 27
+    PARTI_TESLIM_SURESI = 27
     CARI_NO = 28
     PROJE_NO = 29
     KART_NO = 30
@@ -97,7 +97,8 @@ MIGRATIONS = [
     ("ALTER TABLE data ADD COLUMN `Ihale Usulu` TEXT DEFAULT ''", "Ihale Usulu"),
     ("ALTER TABLE data ADD COLUMN `Ihale Tarihi` TEXT DEFAULT ''", "Ihale Tarihi"),
     ("ALTER TABLE data ADD COLUMN `Ise Baslama Tarihi` TEXT DEFAULT ''", "Ise Baslama Tarihi"),
-    ("ALTER TABLE data ADD COLUMN `Isin Suresi` TEXT DEFAULT ''", "Isin Suresi"),
+    ("ALTER TABLE data RENAME COLUMN `Isin Suresi` TO `Parti Teslim Suresi`", "Parti Teslim Suresi"),
+    ("ALTER TABLE data ADD COLUMN `Parti Teslim Suresi` TEXT DEFAULT ''", "Parti Teslim Suresi"),
     ("ALTER TABLE data ADD COLUMN `Cari No` TEXT DEFAULT ''", "Cari No"),
     ("ALTER TABLE data ADD COLUMN `Proje No` TEXT DEFAULT ''", "Proje No"),
     ("ALTER TABLE data ADD COLUMN `Kart No` TEXT DEFAULT ''", "Kart No"),
@@ -745,9 +746,10 @@ class FirmDetailDialog(QDialog):
         layout.addWidget(title)
 
         self.table = QTableWidget()
-        self.table.setColumnCount(6)
+        self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels([
-            "IKN No", "İhale Adı", "Sözleşme Tutarı", "Sözleşme Tarihi", "İşe Başlama Tarihi", "İş Sonu Tarihi"
+            "IKN No", "İhale Adı", "Sözleşme Tutarı",
+            "İhale Tarihi", "Sözleşme Tarihi", "İşe Başlama Tarihi", "İş Sonu Tarihi"
         ])
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -761,6 +763,7 @@ class FirmDetailDialog(QDialog):
         for i, t in enumerate(tenders):
             parts = t["parts"]
             # En son güncellenen veriden tarihleri al
+            ihale_tarihi_raw = str(parts[0][25])[:10] if len(parts[0]) > 25 and parts[0][25] else ""
             sozlesme_raw = parts[0][17] if len(parts[0]) > 17 else ""
             ise_baslama_raw = str(parts[0][26])[:10] if len(parts[0]) > 26 and parts[0][26] else ""
 
@@ -780,23 +783,29 @@ class FirmDetailDialog(QDialog):
             tutar_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(i, 2, tutar_item)
 
+            # İhale Tarihi
+            ihale_item = SortableTableWidgetItem(format_date_tr(ihale_tarihi_raw))
+            ihale_item.setData(Qt.ItemDataRole.UserRole, ihale_tarihi_raw if ihale_tarihi_raw else "0000-00-00")
+            ihale_item.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(i, 3, ihale_item)
+
             # Sözleşme Tarihi
             s_item = SortableTableWidgetItem(format_date_tr(sozlesme_raw))
             s_item.setData(Qt.ItemDataRole.UserRole, sozlesme_raw if sozlesme_raw else "0000-00-00")
             s_item.setTextAlignment(Qt.AlignCenter)
-            self.table.setItem(i, 3, s_item)
+            self.table.setItem(i, 4, s_item)
 
             # İşe Başlama
             b_item = SortableTableWidgetItem(format_date_tr(ise_baslama_raw))
             b_item.setData(Qt.ItemDataRole.UserRole, ise_baslama_raw if ise_baslama_raw else "0000-00-00")
             b_item.setTextAlignment(Qt.AlignCenter)
-            self.table.setItem(i, 4, b_item)
+            self.table.setItem(i, 5, b_item)
 
             # İş Sonu
             e_item = SortableTableWidgetItem(format_date_tr(is_sonu_raw))
             e_item.setData(Qt.ItemDataRole.UserRole, is_sonu_raw if is_sonu_raw else "0000-00-00")
             e_item.setTextAlignment(Qt.AlignCenter)
-            self.table.setItem(i, 5, e_item)
+            self.table.setItem(i, 6, e_item)
 
         # Boyutlandırma Ayarları
         self.table.resizeColumnsToContents()
@@ -979,7 +988,7 @@ def get_db_connection():
             "Yak. Maliyet" REAL,
             "Ihale Tarihi" TEXT,
             "Ise Baslama Tarihi" TEXT,
-            "Isin Suresi" TEXT,
+            "Parti Teslim Suresi" TEXT,
             "Cari No" TEXT,
             "Proje No" TEXT,
             "Kart No" TEXT
@@ -1082,19 +1091,6 @@ def get_db_connection():
     conn.commit()
     return conn
 
-def get_unique_column_values(column_name):
-    """Verilen sütundaki benzersiz değerleri liste olarak döndürür."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(f"SELECT DISTINCT `{column_name}` FROM data WHERE `{column_name}` IS NOT NULL AND `{column_name}` != ''")
-        values = [row[0] for row in cursor.fetchall() if row[0]]
-        conn.close()
-        return values
-    except Exception as e:
-        print(f"Error fetching unique values for {column_name}: {e}")
-        return []
-
 def log_action(action, details=""):
     try:
         conn = get_db_connection()
@@ -1169,12 +1165,7 @@ def format_number(value):
     if value is None or str(value).strip() == "":
         return "-"
     try:
-        if isinstance(value, str):
-            val_str = value.replace('.', '').replace(',', '.')
-            val = float(val_str)
-        else:
-            val = float(value)
-
+        val = parse_money(value)
         if val.is_integer():
             formatted = f"{int(val):,}"
         else:
@@ -1304,6 +1295,27 @@ def update_record(rowid, field_name, value, cursor=None):
         print(f"Veri güncellenirken hata oluştu ({clean_field}): {e}")
 
 
+def recalculate_parti_teslim_suresi():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT rowid, `Ise Baslama Tarihi`, `Parti Son Teslim Tarihi`
+        FROM data
+        WHERE `Ise Baslama Tarihi` IS NOT NULL AND `Ise Baslama Tarihi` != ''
+          AND `Parti Son Teslim Tarihi` IS NOT NULL AND `Parti Son Teslim Tarihi` != ''
+    """)
+    rows = cursor.fetchall()
+    for rowid, baslama, teslim in rows:
+        try:
+            d1 = datetime.strptime(str(baslama)[:10], "%Y-%m-%d")
+            d2 = datetime.strptime(str(teslim)[:10], "%Y-%m-%d")
+            diff = (d2 - d1).days + 1
+            cursor.execute("UPDATE data SET `Parti Teslim Suresi` = ? WHERE rowid = ?", (f"{diff} Gün", rowid))
+        except:
+            pass
+    conn.commit()
+    conn.close()
+
 def delete_record(rowid):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1429,7 +1441,7 @@ class NewTenderDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Yeni İhale Kaydı Oluştur")
         self.setup_ui()
-        self.resize(self.width(), int(self.sizeHint().height() * 1.25))
+        self.resize(self.width(), int(self.sizeHint().height() * 1.35))
 
     def setup_ui(self):
         self.setFixedWidth(725)
@@ -1584,6 +1596,13 @@ class NewTenderDialog(QDialog):
         scroll_basic_layout.addWidget(self.date_edit)
         self.fields["Sözleşme Tarihi"] = self.date_edit
 
+        # İşe Başlama Tarihi
+        scroll_basic_layout.addWidget(QLabel("<b>İşe Başlama Tarihi:</b>"))
+        self.ise_baslama = QDateEdit()
+        self.ise_baslama.setCalendarPopup(True)
+        self.ise_baslama.setDate(QDate.currentDate().addDays(1))
+        scroll_basic_layout.addWidget(self.ise_baslama)
+
         scroll_basic_layout.addStretch()
         scroll_basic.setWidget(scroll_basic_content)
         layout_basic.addWidget(scroll_basic)
@@ -1624,21 +1643,11 @@ class NewTenderDialog(QDialog):
         self.yak_maliyet.textChanged.connect(lambda text: format_currency_input(self.yak_maliyet, text))
         scroll_adv_layout.addWidget(self.yak_maliyet)
 
-        scroll_adv_layout.addWidget(QLabel("<b>İşin Süresi:</b>"))
-        self.isin_suresi = QLineEdit()
-        scroll_adv_layout.addWidget(self.isin_suresi)
-
         scroll_adv_layout.addWidget(QLabel("<b>İhale Tarihi:</b>"))
         self.ihale_tarihi = QDateEdit()
         self.ihale_tarihi.setCalendarPopup(True)
         self.ihale_tarihi.setDate(QDate.currentDate())
         scroll_adv_layout.addWidget(self.ihale_tarihi)
-
-        scroll_adv_layout.addWidget(QLabel("<b>İşe Başlama Tarihi:</b>"))
-        self.ise_baslama = QDateEdit()
-        self.ise_baslama.setCalendarPopup(True)
-        self.ise_baslama.setDate(QDate.currentDate().addDays(1))
-        scroll_adv_layout.addWidget(self.ise_baslama)
 
         scroll_adv_layout.addWidget(QLabel("<b>Cari No:</b>"))
         self.cari_no = QLineEdit()
@@ -1685,7 +1694,7 @@ class NewTenderDialog(QDialog):
             toplam_tutar = parse_money(tutar_str)
 
             parti_sayisi = int(self.fields["Parti Sayısı"].text())
-            parti_miktari = self.fields["Parti Miktarı"].text().replace('.', '')
+            parti_miktari = parse_money(self.fields["Parti Miktarı"].text())
             termin_araligi = int(self.fields["Termin Aralığı (Gün)"].text() or "30")
 
             # Date Handling
@@ -1700,9 +1709,6 @@ class NewTenderDialog(QDialog):
             ise_baslama_tarihi = sozlesme_tarihi + timedelta(days=1)
             ise_baslama_tarihi_str = ise_baslama_tarihi.strftime("%Y-%m-%d")
 
-            # Son parti teslim tarihi (tüm partiler eklendikten sonraki tarih)
-            son_teslim_tarihi = ilk_teslim_tarihi + timedelta(days=termin_araligi*(parti_sayisi-1))
-
             # Detaylı Bilgiler
             ihale_turu_val = self.ihale_turu.currentText()
             ihale_usulu_val = self.ihale_usulu.currentText()
@@ -1713,12 +1719,6 @@ class NewTenderDialog(QDialog):
             kart_no_val = self.kart_no.text()
             malzeme_detay_val = self.malzeme_detay.toPlainText()
 
-            # İşin Süresi: kullanıcı doldurmuşsa onu kullan, yoksa otomatik hesapla
-            isin_suresi_str = self.isin_suresi.text().strip()
-            if not isin_suresi_str:
-                isin_suresi_int = (son_teslim_tarihi - ise_baslama_tarihi).days
-                isin_suresi_str = f"{isin_suresi_int} Gün"
-
             parti_tutari = toplam_tutar / parti_sayisi
 
             timestamp = datetime.now().strftime("%d.%m.%Y %H:%M")
@@ -1727,15 +1727,31 @@ class NewTenderDialog(QDialog):
             conn = get_db_connection()
             cursor = conn.cursor()
 
+            # Aynı IKN & Firma birleşimi var mı kontrol et
+            cursor.execute("SELECT COUNT(*) FROM data WHERE `IKN`=? AND `Yuklenici Firma`=?", (ikn, firma))
+            existing = cursor.fetchone()[0]
+            if existing > 0:
+                reply = QMessageBox.question(self, "Uyarı",
+                    f"Bu IKN ({ikn}) ve Firma ({firma}) birleşimiyle zaten {existing} kayıt bulunuyor.\n\n"
+                    "Devam etmek istiyor musunuz?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No)
+                if reply == QMessageBox.StandardButton.No:
+                    conn.close()
+                    return
+
             for i in range(1, parti_sayisi + 1):
                 teslim_tarihi = (ilk_teslim_tarihi + timedelta(days=termin_araligi*(i-1))).strftime("%Y-%m-%d")
+                teslim_dt = datetime.strptime(teslim_tarihi, "%Y-%m-%d")
+                parti_suresi_int = (teslim_dt - ise_baslama_tarihi).days + 1
+                parti_suresi_str = f"{parti_suresi_int} Gün"
                 cursor.execute("""
                     INSERT INTO data
                     (`IKN`, `Yuklenici Firma`, `Ihale Adi`, `Parti No`, `Parti Son Teslim Tarihi`, `Parti Miktari`, `Parti Tutari`,
-                     `Ambar teslimi gerceklesti`, `Testler basladi`, `Test sonuclari geldi`, `Muayene - Kabul  Evragi imzada`, `Kabul Yapildi`, `Odeme Emri Hazirlandi`, `Aciklama`, `SonGuncelleme`, `Sozlesme Tarihi`, `Ise Baslama Tarihi`, `Isin Suresi`,
+                     `Ambar teslimi gerceklesti`, `Testler basladi`, `Test sonuclari geldi`, `Muayene - Kabul  Evragi imzada`, `Kabul Yapildi`, `Odeme Emri Hazirlandi`, `Aciklama`, `SonGuncelleme`, `Sozlesme Tarihi`, `Ise Baslama Tarihi`, `Parti Teslim Suresi`,
                      `Ihale Turu`, `Ihale Usulu`, `Yak. Maliyet`, `Ihale Tarihi`, `Cari No`, `Proje No`, `Kart No`, `Malzeme Detayi`)
                     VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (ikn, firma, ihale, i, teslim_tarihi, parti_miktari, parti_tutari, audit_info, sozlesme_tarihi_str, ise_baslama_tarihi_str, isin_suresi_str,
+                """, (ikn, firma, ihale, i, teslim_tarihi, parti_miktari, parti_tutari, audit_info, sozlesme_tarihi_str, ise_baslama_tarihi_str, parti_suresi_str,
                       ihale_turu_val, ihale_usulu_val, yak_maliyet_val, ihale_tarihi_str, cari_no_val, proje_no_val, kart_no_val, malzeme_detay_val))
 
             log_action("Kayıt Oluşturma", f"IKN: {ikn}, Firma: {firma}, Parti Sayısı: {parti_sayisi}")
@@ -1743,6 +1759,7 @@ class NewTenderDialog(QDialog):
             conn.close()
             self.accept()
         except Exception as e:
+            if 'conn' in locals(): conn.close()
             QMessageBox.critical(self, "Hata", f"Kayıt eklenemedi. Lütfen verileri kontrol edin.\n{e}")
 
 # --- YENİ PARTİ EKLEME DİALOGU ---
@@ -1997,6 +2014,8 @@ class NewBatchDialog(QDialog):
             qd = self.date_edit.date()
             ilk_tarih = datetime(qd.year(), qd.month(), qd.day())
             miktar = parse_money(self.miktar_edit.text())
+            if miktar == int(miktar):
+                miktar = int(miktar)
             tutar = parse_money(self.amount_edit.text())
             aciklama = self.desc_edit.text()
             timestamp = datetime.now().strftime("%d.%m.%Y %H:%M")
@@ -2007,7 +2026,7 @@ class NewBatchDialog(QDialog):
 
             # Mevcut kayıtlardan ortak alanları miras al
             cursor.execute("""
-                SELECT `Sozlesme Tarihi`, `Ise Baslama Tarihi`, `Isin Suresi`,
+                SELECT `Sozlesme Tarihi`, `Ise Baslama Tarihi`, `Parti Teslim Suresi`,
                        `Ihale Turu`, `Ihale Usulu`, `Yak. Maliyet`, `Ihale Tarihi`,
                        `Cari No`, `Proje No`, `Kart No`, `Malzeme Detayi`
                 FROM data WHERE `IKN` = ? AND `Yuklenici Firma` = ?
@@ -2017,7 +2036,7 @@ class NewBatchDialog(QDialog):
             existing = cursor.fetchone()
             sozlesme_tarihi = existing[0] if existing else None
             ise_baslama_tarihi = existing[1] if existing else None
-            isin_suresi = existing[2] if existing else None
+            parti_teslim_suresi = existing[2] if existing else None
             ihale_turu = existing[3] if existing else None
             ihale_usulu = existing[4] if existing else None
             yak_maliyet = existing[5] if existing else None
@@ -2030,6 +2049,16 @@ class NewBatchDialog(QDialog):
             for i in range(sayisi):
                 parti_no = self.next_batch_no + i
                 teslim_tarihi = (ilk_tarih + timedelta(days=termin * i)).strftime("%Y-%m-%d")
+                teslim_dt = datetime.strptime(teslim_tarihi, "%Y-%m-%d")
+                if ise_baslama_tarihi:
+                    try:
+                        baslama_dt = datetime.strptime(str(ise_baslama_tarihi)[:10], "%Y-%m-%d")
+                        parti_suresi_hesap = (teslim_dt - baslama_dt).days + 1
+                        parti_teslim_suresi = f"{parti_suresi_hesap} Gün"
+                    except:
+                        parti_teslim_suresi = existing[2] if existing else None
+                else:
+                    parti_teslim_suresi = existing[2] if existing else None
                 cursor.execute("""
                     INSERT INTO data
                     (`IKN`, `Yuklenici Firma`, `Ihale Adi`, `Parti No`,
@@ -2037,13 +2066,13 @@ class NewBatchDialog(QDialog):
                      `Ambar teslimi gerceklesti`, `Testler basladi`,
                      `Test sonuclari geldi`, `Muayene - Kabul  Evragi imzada`,
                      `Kabul Yapildi`, `Odeme Emri Hazirlandi`, `Aciklama`, `SonGuncelleme`,
-                     `Sozlesme Tarihi`, `Ise Baslama Tarihi`, `Isin Suresi`,
+                     `Sozlesme Tarihi`, `Ise Baslama Tarihi`, `Parti Teslim Suresi`,
                      `Ihale Turu`, `Ihale Usulu`, `Yak. Maliyet`, `Ihale Tarihi`,
                      `Cari No`, `Proje No`, `Kart No`, `Malzeme Detayi`)
                     VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (self.ikn, self.firma, self.ihale, parti_no,
                       teslim_tarihi, miktar, tutar, aciklama, audit_info,
-                      sozlesme_tarihi, ise_baslama_tarihi, isin_suresi,
+                      sozlesme_tarihi, ise_baslama_tarihi, parti_teslim_suresi,
                       ihale_turu, ihale_usulu, yak_maliyet, ihale_tarihi,
                       cari_no, proje_no, kart_no, malzeme_detay))
 
@@ -2057,6 +2086,7 @@ class NewBatchDialog(QDialog):
                        f"Açıklama: {self.desc_edit.text()}")
             self.accept()
         except Exception as e:
+            if 'conn' in locals(): conn.close()
             QMessageBox.critical(self, "Hata", f"Parti eklenemedi:\n{e}")
 
 # --- DÜZENLEME PENCERESİ ---
@@ -2067,7 +2097,7 @@ class EditDialog(QDialog):
         self.rowid = record[0]
         self.simplified = simplified
         self.setWindowTitle("Hızlı Durum Güncelle" if simplified else "Kayıt Düzenle")
-        self.resize(700, 800)
+        self.resize(700, 600)
         self.setup_ui()
 
     def setup_ui(self):
@@ -2102,23 +2132,6 @@ class EditDialog(QDialog):
         scroll_basic_content = QWidget()
         scroll_basic_layout = QVBoxLayout(scroll_basic_content)
 
-        # IKN alanı
-        self.ikn_edit = QLineEdit(str(self.record[1]) if len(self.record) > 1 else "")
-        self.ikn_edit.setStyleSheet(edit_style)
-        scroll_basic_layout.addWidget(QLabel("İKN:"))
-        scroll_basic_layout.addWidget(self.ikn_edit)
-
-        self.ihale_edit = QTextEdit(str(self.record[3]) if len(self.record) > 3 else "")
-        self.ihale_edit.setFixedHeight(60)
-        self.ihale_edit.setStyleSheet(edit_style)
-        scroll_basic_layout.addWidget(QLabel("İhale Adı:"))
-        scroll_basic_layout.addWidget(self.ihale_edit)
-
-        self.firma_edit = QLineEdit(str(self.record[2]) if len(self.record) > 2 else "")
-        self.firma_edit.setStyleSheet(edit_style)
-        scroll_basic_layout.addWidget(QLabel("Yüklenici Firma:"))
-        scroll_basic_layout.addWidget(self.firma_edit)
-
         self.parti_no_edit = QLineEdit(str(self.record[4]) if len(self.record) > 4 else "1")
         self.parti_no_edit.setValidator(QIntValidator(1, 1000))
         self.parti_no_edit.setStyleSheet(edit_style)
@@ -2151,7 +2164,6 @@ class EditDialog(QDialog):
             self.tarih_edit.setDate(QDate.currentDate())
         scroll_basic_layout.addWidget(QLabel("Teslim Tarihi:"))
         scroll_basic_layout.addWidget(self.tarih_edit)
-        self.tarih_edit.dateChanged.connect(self.calculate_duration)
 
         scroll_basic_layout.addWidget(QLabel("Malzeme Detayı:"))
         self.malzeme_detayi_edit = QTextEdit()
@@ -2199,10 +2211,10 @@ class EditDialog(QDialog):
         self.test_result_edit.setFixedWidth(250)
 
         steps_grid = QGridLayout()
-        steps_grid.setVerticalSpacing(12)
+        steps_grid.setVerticalSpacing(6)
 
         for i, (text, idx) in enumerate(steps):
-            steps_grid.setRowMinimumHeight(i, 45)
+            steps_grid.setRowMinimumHeight(i, 28)
             is_checked = (len(self.record) > idx and _is_checked(self.record[idx]))
             cb = QCheckBox(text)
             cb.setChecked(is_checked)
@@ -2255,39 +2267,12 @@ class EditDialog(QDialog):
         layout_steps.addWidget(scroll_steps)
         self.tabs.addTab(tab_steps, "⚙️ İşlem Adımları")
 
-        # İlk süre hesaplamasını tetikle
-        self.calculate_duration()
-
         # --- Sabit Butonlar ---
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         buttons.button(QDialogButtonBox.StandardButton.Save).setText("Değişiklikleri Kaydet")
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("İptal")
         buttons.accepted.connect(self.save_changes); buttons.rejected.connect(self.reject)
         main_layout.addWidget(buttons)
-
-    def calculate_duration(self):
-        """İşe başlama ve teslim tarihi arasındaki farkı hesaplar."""
-        if self.simplified:
-            return
-        if not hasattr(self, 'ise_baslama_edit') or not hasattr(self, 'tarih_edit'):
-            if hasattr(self, 'isin_suresi_edit'):
-                self.isin_suresi_edit.setText('-')
-            return
-
-        try:
-            start_date = self.ise_baslama_edit.date()
-            end_date = self.tarih_edit.date()
-            diff = start_date.daysTo(end_date) + 1
-            if diff >= 0:
-                self.isin_suresi_edit.setText(f'{diff} Gün')
-            else:
-                self.isin_suresi_edit.setText('Hatalı Tarih')
-        except:
-            if hasattr(self, 'isin_suresi_edit'):
-                self.isin_suresi_edit.setText('-')
-
-    def format_on_type(self, edit_widget, text):
-        format_number_edit(edit_widget, text)
 
     def save_changes(self):
         try:
@@ -2298,20 +2283,6 @@ class EditDialog(QDialog):
 
             # Temel Bilgiler (simplified modda sadece mevcut alanları kaydet)
             if not self.simplified:
-                new_ikn = self.ikn_edit.text().strip()
-                if new_ikn != str(old[1]):
-                    update_record(rowid, "IKN", new_ikn)
-                    change_details.append(f"IKN: '{old[1]}' → '{new_ikn}'")
-
-                new_firma = self.firma_edit.text().strip()
-                if new_firma != str(old[2]):
-                    update_record(rowid, "Yuklenici Firma", new_firma)
-                    change_details.append(f"Firma: '{old[2]}' → '{new_firma}'")
-
-                new_ihale = self.ihale_edit.toPlainText().strip()
-                if new_ihale != str(old[3]):
-                    update_record(rowid, "Ihale Adi", new_ihale)
-                    change_details.append("İhale Adı değiştirildi")
 
                 new_parti = self.parti_no_edit.text().strip()
                 if new_parti != str(old[4]):
@@ -2319,8 +2290,10 @@ class EditDialog(QDialog):
                     change_details.append(f"Parti No: {new_parti}")
 
                 new_miktar = parse_money(self.miktar_edit.text())
+                if new_miktar == int(new_miktar):
+                    new_miktar = int(new_miktar)
                 old_miktar = str(old[16]) if len(old) > 16 and old[16] else ""
-                if new_miktar != old_miktar:
+                if str(new_miktar) != str(parse_money(old_miktar)):
                     update_record(rowid, "Parti Miktari", new_miktar)
                     change_details.append(f"Miktar: {new_miktar}")
 
@@ -2579,7 +2552,6 @@ class BulkEditDialog(QDialog):
             ("cb_update_turu", "turu_edit", "İhale Türü:", None, 22),
             ("cb_update_usulu", "usulu_edit", "İhale Usulü:", None, 23),
             ("cb_update_yak_maliyet", "yak_maliyet_edit", "Yaklaşık Maliyet:", None, 24),
-            ("cb_update_isin_suresi", "isin_suresi_edit", "İşin Süresi:", None, 27),
             ("cb_update_ihale_tarihi", "ihale_tarihi_edit", "İhale Tarihi:", "date", 25),
             ("cb_update_ise_baslama", "ise_baslama_edit", "İşe Başlama Tarihi:", "date", 26),
             ("cb_update_cari", "cari_edit", "Cari No:", None, 28),
@@ -2621,6 +2593,8 @@ class BulkEditDialog(QDialog):
                     clean = raw_val.replace('.', '')
                     if clean.isdigit():
                         raw_val = "{:,}".format(int(clean)).replace(',', '.')
+                if raw_val and edit_name == "yak_maliyet_edit":
+                    raw_val = format_number(raw_val)
                 edit.setText(raw_val)
 
             edit.setEnabled(False); edit.setStyleSheet(edit_style)
@@ -2647,9 +2621,6 @@ class BulkEditDialog(QDialog):
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("İptal")
         buttons.accepted.connect(self.save_changes); buttons.rejected.connect(self.reject)
         main_layout.addWidget(buttons)
-
-    def format_on_type(self, edit_widget, text):
-        format_number_edit(edit_widget, text)
 
     def on_sozlesme_date_changed(self, date):
         """Sözleşme tarihi değiştiğinde işe başlama tarihini otomatik +1 gün yapar."""
@@ -2694,6 +2665,8 @@ class BulkEditDialog(QDialog):
 
             do_miktar = self.cb_update_miktar.isChecked()
             new_miktar = parse_money(self.miktar_edit.text()) if do_miktar else None
+            if new_miktar is not None and new_miktar == int(new_miktar):
+                new_miktar = int(new_miktar)
             if do_miktar:
                 changes_summary.append("Miktar")
                 value_details.append(f"Miktar: {new_miktar}")
@@ -2752,9 +2725,6 @@ class BulkEditDialog(QDialog):
             if self.cb_update_yak_maliyet.isChecked():
                 changes_summary.append("Yak. Maliyet")
                 value_details.append(f"Yak. Maliyet: {self.yak_maliyet_edit.text()}")
-            if self.cb_update_isin_suresi.isChecked():
-                changes_summary.append("İşin Süresi")
-                value_details.append(f"İşin Süresi: {self.isin_suresi_edit.text()}")
             if self.cb_update_ihale_tarihi.isChecked():
                 changes_summary.append("İhale Tarihi")
                 value_details.append(f"İhale Tarihi: {self.ihale_tarihi_edit.date().toString('yyyy-MM-dd')}")
@@ -2815,31 +2785,28 @@ class BulkEditDialog(QDialog):
                     if self.cb_update_turu.isChecked(): update_record(rowid, "Ihale Turu", self.turu_edit.currentText(), cursor)
                     if self.cb_update_usulu.isChecked(): update_record(rowid, "Ihale Usulu", self.usulu_edit.currentText(), cursor)
                     if self.cb_update_yak_maliyet.isChecked(): update_record(rowid, "Yak. Maliyet", parse_money(self.yak_maliyet_edit.text()), cursor)
-                    if self.cb_update_isin_suresi.isChecked():
-                        update_record(rowid, "Isin Suresi", self.isin_suresi_edit.text(), cursor)
-                    else:
-                        try:
-                            final_teslim_str = str(r[5])[:10] if len(r) > 5 and r[5] else ""
-                            if do_sozlesme:
-                                old_sozlesme_str = str(r[17])[:10] if len(r) > 17 and r[17] else ""
-                                if old_sozlesme_str:
-                                    old_soz_dt = datetime.strptime(old_sozlesme_str, "%Y-%m-%d")
-                                    delta = (new_sozlesme_dt - old_soz_dt).days
-                                    if delta != 0 and final_teslim_str:
-                                        old_tes_dt = datetime.strptime(final_teslim_str, "%Y-%m-%d")
-                                        final_teslim_str = (old_tes_dt + timedelta(days=delta)).strftime("%Y-%m-%d")
-                            final_start_str = str(r[26])[:10] if len(r) > 26 and r[26] else ""
-                            if self.cb_update_ise_baslama.isChecked():
-                                final_start_str = self.ise_baslama_edit.date().toString("yyyy-MM-dd")
-                            if final_teslim_str and final_start_str:
-                                start_dt = datetime.strptime(final_start_str, "%Y-%m-%d")
-                                end_dt = datetime.strptime(final_teslim_str, "%Y-%m-%d")
-                                calc_dur = (end_dt - start_dt).days + 1
-                                old_dur = str(r[27]) if len(r) > 27 and r[27] else ""
-                                if old_dur != f"{calc_dur} Gün":
-                                    update_record(rowid, "Isin Suresi", f"{calc_dur} Gün", cursor)
-                        except Exception:
-                            pass
+                    try:
+                        final_teslim_str = str(r[5])[:10] if len(r) > 5 and r[5] else ""
+                        if do_sozlesme:
+                            old_sozlesme_str = str(r[17])[:10] if len(r) > 17 and r[17] else ""
+                            if old_sozlesme_str:
+                                old_soz_dt = datetime.strptime(old_sozlesme_str, "%Y-%m-%d")
+                                delta = (new_sozlesme_dt - old_soz_dt).days
+                                if delta != 0 and final_teslim_str:
+                                    old_tes_dt = datetime.strptime(final_teslim_str, "%Y-%m-%d")
+                                    final_teslim_str = (old_tes_dt + timedelta(days=delta)).strftime("%Y-%m-%d")
+                        final_start_str = str(r[26])[:10] if len(r) > 26 and r[26] else ""
+                        if self.cb_update_ise_baslama.isChecked():
+                            final_start_str = self.ise_baslama_edit.date().toString("yyyy-MM-dd")
+                        if final_teslim_str and final_start_str:
+                            start_dt = datetime.strptime(final_start_str, "%Y-%m-%d")
+                            end_dt = datetime.strptime(final_teslim_str, "%Y-%m-%d")
+                            calc_dur = (end_dt - start_dt).days + 1
+                            old_dur = str(r[27]) if len(r) > 27 and r[27] else ""
+                            if old_dur != f"{calc_dur} Gün":
+                                update_record(rowid, "Parti Teslim Suresi", f"{calc_dur} Gün", cursor)
+                    except Exception:
+                        pass
                     if self.cb_update_ihale_tarihi.isChecked(): update_record(rowid, "Ihale Tarihi", self.ihale_tarihi_edit.date().toString("yyyy-MM-dd"), cursor)
                     if self.cb_update_ise_baslama.isChecked(): update_record(rowid, "Ise Baslama Tarihi", self.ise_baslama_edit.date().toString("yyyy-MM-dd"), cursor)
                     if self.cb_update_cari.isChecked(): update_record(rowid, "Cari No", self.cari_edit.text(), cursor)
@@ -3318,7 +3285,7 @@ class SummaryWidget(QWidget):
         tarih_val = format_date_tr(record[5]) if len(record) > 5 and record[5] else "-"
         tarih_lbl = QLabel(f"📅 {tarih_val}")
 
-        # İşin Süresi Hesapla
+        # Parti Teslim Süresi Hesapla
         dur_str = "-"
         if record[5] and len(record) > 26 and record[26]:
             try:
@@ -3493,10 +3460,11 @@ class TenderWidget(QWidget):
 
         self.tender_table = QTableWidget()
         self.tender_table.setAlternatingRowColors(True)
-        self.tender_table.setColumnCount(11)
+        self.tender_table.setColumnCount(12)
         self.tender_table.setHorizontalHeaderLabels([
-            "IKN", "Firma", "İhale Adı", "Sözleşme Tarihi", "İşe Başlama", "İş Sonu",
-            "İşin Süresi", "Yak. Maliyet", "Sözleşme Tutarı", "Toplam Parti", "Kalan Parti"
+            "IKN", "Firma", "İhale Adı",
+            "İhale Tarihi", "Sözleşme Tarihi", "İşe Başlama", "Parti Teslim Süresi", "İş Sonu",
+            "Yak. Maliyet", "Sözleşme Tutarı", "Toplam Parti", "Kalan Parti"
         ])
         self.tender_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.tender_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
@@ -3758,47 +3726,54 @@ class TenderWidget(QWidget):
             # Column 2: Ihale Adi - Sortable
             self.tender_table.setItem(i, 2, SortableTableWidgetItem(str(item["ihale"])))
 
-            # Column 3: Sözleşme Tarihi
+            # Column 3: İhale Tarihi
             parts = item["parts"]
+            ihale_tarihi_raw = str(parts[0][25])[:10] if len(parts[0]) > 25 and parts[0][25] else ""
+            ihale_tarihi_item = SortableTableWidgetItem(format_date_tr(ihale_tarihi_raw))
+            ihale_tarihi_item.setData(Qt.ItemDataRole.UserRole, ihale_tarihi_raw if ihale_tarihi_raw else "0000-00-00")
+            ihale_tarihi_item.setTextAlignment(Qt.AlignCenter)
+            self.tender_table.setItem(i, 3, ihale_tarihi_item)
+
+            # Column 4: Sözleşme Tarihi
             sozlesme_raw = parts[0][17] if len(parts[0]) > 17 else ""
             sozlesme_item = SortableTableWidgetItem(format_date_tr(sozlesme_raw))
             sozlesme_item.setData(Qt.ItemDataRole.UserRole, sozlesme_raw if sozlesme_raw else "0000-00-00")
             sozlesme_item.setTextAlignment(Qt.AlignCenter)
-            self.tender_table.setItem(i, 3, sozlesme_item)
+            self.tender_table.setItem(i, 4, sozlesme_item)
 
-            # Column 4: İşe Başlama (Formatlanmış ve Saat Bilgisi Arındırılmış)
+            # Column 5: İşe Başlama (Formatlanmış ve Saat Bilgisi Arındırılmış)
             ise_baslama_raw = str(parts[0][26])[:10] if len(parts[0]) > 26 and parts[0][26] else ""
             ise_item = SortableTableWidgetItem(format_date_tr(ise_baslama_raw))
             ise_item.setData(Qt.ItemDataRole.UserRole, ise_baslama_raw if ise_baslama_raw else "0000-00-00")
             ise_item.setTextAlignment(Qt.AlignCenter)
-            self.tender_table.setItem(i, 4, ise_item)
+            self.tender_table.setItem(i, 5, ise_item)
 
-            # Column 5: İş Sonu (Son Parti Teslim Tarihi)
+            # Column 6: Parti Teslim Süresi
             delivery_dates = [p[5] for p in parts if p[5]]
             is_sonu_raw = max(delivery_dates) if delivery_dates else ""
-            is_sonu_item = SortableTableWidgetItem(format_date_tr(is_sonu_raw))
-            is_sonu_item.setData(Qt.ItemDataRole.UserRole, is_sonu_raw if is_sonu_raw else "0000-00-00")
-            is_sonu_item.setTextAlignment(Qt.AlignCenter)
-            self.tender_table.setItem(i, 5, is_sonu_item)
-
-            # Column 6: İşin Süresi
-            isin_suresi_text = "-"
-            isin_suresi_days = -1
+            parti_teslim_suresi_text = "-"
+            parti_teslim_suresi_days = -1
             if sozlesme_raw and is_sonu_raw:
                 try:
                     d1 = datetime.strptime(str(ise_baslama_raw if ise_baslama_raw else sozlesme_raw)[:10], "%Y-%m-%d")
                     d2 = datetime.strptime(str(is_sonu_raw)[:10], "%Y-%m-%d")
                     diff = (d2 - d1).days + 1
-                    isin_suresi_days = diff
-                    isin_suresi_text = f"{diff} Gün"
+                    parti_teslim_suresi_days = diff
+                    parti_teslim_suresi_text = f"{diff} Gün"
                 except: pass
 
-            suresi_item = SortableTableWidgetItem(isin_suresi_text)
-            suresi_item.setData(Qt.ItemDataRole.UserRole, isin_suresi_days)
+            # Column 7: İş Sonu (Son Parti Teslim Tarihi)
+            is_sonu_item = SortableTableWidgetItem(format_date_tr(is_sonu_raw))
+            is_sonu_item.setData(Qt.ItemDataRole.UserRole, is_sonu_raw if is_sonu_raw else "0000-00-00")
+            is_sonu_item.setTextAlignment(Qt.AlignCenter)
+            self.tender_table.setItem(i, 7, is_sonu_item)
+
+            suresi_item = SortableTableWidgetItem(parti_teslim_suresi_text)
+            suresi_item.setData(Qt.ItemDataRole.UserRole, parti_teslim_suresi_days)
             suresi_item.setTextAlignment(Qt.AlignCenter)
             self.tender_table.setItem(i, 6, suresi_item)
 
-            # Column 7: Yak. Maliyet - Sortable Numeric
+            # Column 8: Yak. Maliyet - Sortable Numeric
             yak_val_raw = parts[0][24] if len(parts[0]) > 24 and parts[0][24] else 0.0
             try:
                 if isinstance(yak_val_raw, str):
@@ -3809,22 +3784,22 @@ class TenderWidget(QWidget):
             yak_item = SortableTableWidgetItem(f"{display_money(yak_val_num)}")
             yak_item.setData(Qt.ItemDataRole.UserRole, yak_val_num)
             yak_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self.tender_table.setItem(i, 7, yak_item)
+            self.tender_table.setItem(i, 8, yak_item)
 
-            # Column 8: Sözleşme Tutarı - Sortable Numeric
+            # Column 9: Sözleşme Tutarı - Sortable Numeric
             tutar_item = SortableTableWidgetItem(display_money(item["total_amount"]))
             tutar_item.setData(Qt.ItemDataRole.UserRole, item["total_amount"])
             tutar_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self.tender_table.setItem(i, 8, tutar_item)
+            self.tender_table.setItem(i, 9, tutar_item)
 
-            # Column 9: Toplam Parti Sayisi
+            # Column 10: Toplam Parti Sayisi
             part_count = len(item["parts"])
             p_item = SortableTableWidgetItem(format_number(part_count))
             p_item.setData(Qt.ItemDataRole.UserRole, part_count)
             p_item.setTextAlignment(Qt.AlignCenter)
-            self.tender_table.setItem(i, 9, p_item)
+            self.tender_table.setItem(i, 10, p_item)
 
-            # Column 10: Kalan Parti Sayisi
+            # Column 11: Kalan Parti Sayisi
             t_completed = 0
             for p in item["parts"]:
                 if len(p) > 13 and _is_checked(p[13]): t_completed += 1
@@ -3837,7 +3812,7 @@ class TenderWidget(QWidget):
                 rem_item.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
             else:
                 rem_item.setForeground(QColor("#16a34a"))
-            self.tender_table.setItem(i, 10, rem_item)
+            self.tender_table.setItem(i, 11, rem_item)
 
         self.tender_table.resizeRowsToContents()
         # Satır yüksekliklerini maksimum 2 satır (60px) olacak şekilde sınırla
@@ -4066,7 +4041,7 @@ class FirmSummaryWidget(QWidget):
                     "IKN", "Yüklenici Firma", "İhale Adı", "Sözleşme Tutarı",
                     "Toplam Parti Sayısı", "Sözleşme Tarihi", "İhale Türü",
                     "İhale Usulü", "Yak. Maliyet", "İhale Tarihi",
-                    "İşe Başlama Tarihi", "İşin Süresi", "İşin Bitiş (Son parti teslim) Tarihi"
+                    "İşe Başlama Tarihi", "Parti Teslim Süresi", "İşin Bitiş (Son parti teslim) Tarihi"
                 ])
                 for t in all_tenders:
                     parts = t["parts"]
@@ -4082,7 +4057,7 @@ class FirmSummaryWidget(QWidget):
                     yak_maliyet = display_money(yak_num)
                     ihale_tarihi = p0[25] if len(p0) > 25 else ""
                     ise_baslama = p0[26] if len(p0) > 26 else ""
-                    isin_suresi = p0[27] if len(p0) > 27 else ""
+                    parti_teslim_suresi = p0[27] if len(p0) > 27 else ""
                     teslim_tarihleri = [p[5] for p in parts if len(p) > 5 and p[5]]
                     isin_bitis = max(teslim_tarihleri) if teslim_tarihleri else ""
 
@@ -4092,7 +4067,7 @@ class FirmSummaryWidget(QWidget):
                         len(parts),
                         sozlesme_tarihi, ihale_turu, ihale_usulu,
                         yak_maliyet, ihale_tarihi, ise_baslama,
-                        isin_suresi, isin_bitis,
+                        parti_teslim_suresi, isin_bitis,
                     ])
             QMessageBox.information(self, "Başarılı", f"Tüm ihale bilgileri başarıyla dışa aktarıldı:\n{path}")
             log_action("CSV Dışa Aktar (Tüm İhale Bilgileri Özet)", f"Dosya: {path}")
@@ -4627,11 +4602,11 @@ class DetailWidget(QWidget):
         self.table = QTableWidget(); self.table.setColumnCount(29)
         self.table.setAlternatingRowColors(True)
         self.table.setHorizontalHeaderLabels([
-            "IKN", "Firma", "İhale Adı", "Sözl. Tarihi", "Parti", "Parti Tarihi",
-            "Miktar", "Malzeme Detayı", "Tutar",
+            "IKN", "Firma", "İhale Adı",
+            "İhale Tarihi", "Sözl. Tarihi", "İşe Başlama", "Parti Teslim Süresi", "Parti Tarihi",
+            "Parti No", "Miktar", "Malzeme Detayı", "Tutar",
             "Ambar", "Bşk. Haber", "Test B.", "Test S.", "Rapor", "Kabul", "Ödeme",
-            "Açıklama", "İhale Türü", "İhale Usulü", "Yak. Maliyet", "İhale Tarihi",
-            "İşe Başlama", "İşin Süresi", "Cari No", "Proje No", "Kart No",
+            "Açıklama", "İhale Türü", "İhale Usulü", "Yak. Maliyet", "Cari No", "Proje No", "Kart No",
             "Test Detay (B)", "Test Detay (S)", "İşlem"
         ])
 
@@ -4641,13 +4616,16 @@ class DetailWidget(QWidget):
         self.table.setColumnWidth(0, 100)  # IKN
         self.table.setColumnWidth(1, 150)  # Firma
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)  # Ihale Adi
-        self.table.setColumnWidth(3, 110)  # Sozlesme Tarihi
-        self.table.setColumnWidth(4, 60)   # Parti
-        self.table.setColumnWidth(5, 90)   # Tarih
-        self.table.setColumnWidth(6, 80)   # Miktar
-        self.table.setColumnWidth(7, 200)  # Malzeme Detayi
-        self.table.setColumnWidth(8, 120)  # Tutar
-        for i in range(9, 29):
+        self.table.setColumnWidth(3, 100)  # İhale Tarihi
+        self.table.setColumnWidth(4, 100)  # Sözl. Tarihi
+        self.table.setColumnWidth(5, 100)  # İşe Başlama
+        self.table.setColumnWidth(6, 100)  # Parti Teslim Süresi
+        self.table.setColumnWidth(7, 90)   # Parti Tarihi
+        self.table.setColumnWidth(8, 60)   # Parti No
+        self.table.setColumnWidth(9, 80)   # Miktar
+        self.table.setColumnWidth(10, 200) # Malzeme Detayi
+        self.table.setColumnWidth(11, 120) # Tutar
+        for i in range(12, 29):
             self.table.setColumnWidth(i, 100)
         self.table.setColumnWidth(2, 250) # İhale adı geniş kalsın
         self.table.setColumnWidth(28, 130) # İşlem sütunu
@@ -4667,8 +4645,8 @@ class DetailWidget(QWidget):
 
     def load_column_settings(self):
         settings = QSettings("IhaleSystem", f"UserPrefs/{Session.user}")
-        # IKN(0), Firma(1), Ihale(2), Parti(4), Termin(5), Miktar(6), Tutar(8), Aciklama(16)
-        min_indices = [0, 1, 2, 4, 5, 6, 8, 16]
+        # IKN(0), Firma(1), Ihale(2), Ihale Tarihi(3), Sozlesme(4), Ise Baslama(5), Parti Teslim(6), Parti Tarihi(7), Parti No(8), Miktar(9), Malzeme(10), Tutar(11), Aciklama(19)
+        min_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 19]
 
         has_settings = False
         for c in range(self.table.columnCount()):
@@ -4833,112 +4811,126 @@ class DetailWidget(QWidget):
 
             filtered.append(r)
 
-        self.table.setSortingEnabled(False) # Veri eklerken sıralamayı kapat
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(len(filtered))
         for row_idx, r in enumerate(filtered):
-            # IKN, Firma, Ihale Adi (Standart String)
+            # IKN, Firma, Ihale Adi (0-2)
             for i in range(3):
                 item = QTableWidgetItem(str(r[i+1]))
                 if i == 0:
                     item.setData(Qt.ItemDataRole.UserRole, r[0])
                 self.table.setItem(row_idx, i, item)
 
-            # Sözleşme Tarihi
+            # Col 3: İhale Tarihi (DB 25)
+            ihale_tarihi_raw = str(r[25])[:10] if len(r) > 25 and r[25] else ""
+            self.table.setItem(row_idx, 3, QTableWidgetItem(format_date_tr(ihale_tarihi_raw)))
+
+            # Col 4: Sözleşme Tarihi (DB 17)
             sozlesme_raw = str(r[17])[:10] if len(r) > 17 and r[17] else ""
             sozlesme_item = QTableWidgetItem(format_date_tr(sozlesme_raw))
             sozlesme_item.setTextAlignment(Qt.AlignCenter)
-            self.table.setItem(row_idx, 3, sozlesme_item)
+            self.table.setItem(row_idx, 4, sozlesme_item)
 
-            # Parti No (Sayısal Sıralama)
-            parti_val = 0
-            try:
-                parti_val = int(r[4])
-            except: pass
+            # Col 5: İşe Başlama (DB 26)
+            ise_baslama_raw = str(r[26])[:10] if len(r) > 26 and r[26] else ""
+            self.table.setItem(row_idx, 5, QTableWidgetItem(format_date_tr(ise_baslama_raw)))
 
-            parti_item = SortableTableWidgetItem(str(r[4]))
-            parti_item.setData(Qt.ItemDataRole.UserRole, parti_val)
-            parti_item.setTextAlignment(Qt.AlignCenter)
-            self.table.setItem(row_idx, 4, parti_item)
+            # Col 6: Parti Teslim Süresi (DB 27)
+            parti_suresi_val = str(r[27]) if len(r) > 27 and r[27] else "-"
+            self.table.setItem(row_idx, 6, QTableWidgetItem(parti_suresi_val))
 
-            # Tarih
+            # Col 7: Parti Tarihi (DB 5) – Sortable with color
             tarih_raw = str(r[5])[:10] if r[5] else ""
-            tarih_display = format_date_tr(tarih_raw)
-            tarih_item = SortableTableWidgetItem(tarih_display)
+            tarih_item = SortableTableWidgetItem(format_date_tr(tarih_raw))
             tarih_item.setData(Qt.ItemDataRole.UserRole, tarih_raw)
             tarih_item.setTextAlignment(Qt.AlignCenter)
-
             is_completed = (len(r) > 11 and _is_checked(r[11]))
             date_color = get_date_color(tarih_raw, is_completed)
             if date_color:
                 tarih_item.setBackground(QColor(date_color))
                 tarih_item.setForeground(QColor("white"))
+            self.table.setItem(row_idx, 7, tarih_item)
 
-            self.table.setItem(row_idx, 5, tarih_item)
+            # Col 8: Parti No (DB 4) – Sortable numeric
+            parti_val = int(r[4]) if str(r[4]).isdigit() else 0
+            parti_item = SortableTableWidgetItem(str(r[4]))
+            parti_item.setData(Qt.ItemDataRole.UserRole, parti_val)
+            parti_item.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(row_idx, 8, parti_item)
 
-            # Miktar
+            # Col 9: Miktar (DB 16)
             miktar_val = format_number(r[16]) if len(r) > 16 and r[16] else ""
             m_item = QTableWidgetItem(miktar_val)
             m_item.setTextAlignment(Qt.AlignCenter)
-            self.table.setItem(row_idx, 6, m_item)
+            self.table.setItem(row_idx, 9, m_item)
 
-            # Malzeme Detayı (index 18 in record)
+            # Col 10: Malzeme Detayı (DB 18)
             malzeme_val = str(r[18]) if len(r) > 18 and r[18] else ""
             mal_item = QTableWidgetItem(malzeme_val)
-            mal_item.setToolTip(malzeme_val)  # uzun metinler için tooltip
-            self.table.setItem(row_idx, 7, mal_item)
+            mal_item.setToolTip(malzeme_val)
+            self.table.setItem(row_idx, 10, mal_item)
 
-            # Tutar (now col 8)
+            # Col 11: Tutar (DB 6) – Sortable numeric
             t_item = SortableTableWidgetItem(f"{display_money(r[6])}")
             t_item.setData(Qt.ItemDataRole.UserRole, float(r[6]) if r[6] else 0.0)
             t_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self.table.setItem(row_idx, 8, t_item)
+            self.table.setItem(row_idx, 11, t_item)
 
-            # Durum sütunları (cols 9-15)
-            for c, idx in enumerate([7, 19, 8, 9, 10, 11, 13], 9):
+            # Cols 12-18: Durum sütunları (DB 7,19,8,9,10,11,13)
+            for c, idx in enumerate([7, 19, 8, 9, 10, 11, 13], 12):
                 val = r[idx] if idx < len(r) else 0.0
                 it = QTableWidgetItem("✓" if _is_checked(val) else "○")
                 it.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(row_idx, c, it)
 
-            # Açıklama (col 16)
-            self.table.setItem(row_idx, 16, QTableWidgetItem(str(r[14]) if len(r) > 14 else ""))
+            # Col 19: Açıklama (DB 14)
+            self.table.setItem(row_idx, 19, QTableWidgetItem(str(r[14]) if len(r) > 14 else ""))
 
-            # Yeni Sütunlar (17-28 arası)
-            # 17:İhale Türü, 18:İhale Usulü, 20:İhale Tarihi, 21:İşe Başlama, 22:İşin Süresi, 23:Cari No, 24:Proje No, 25:Kart No
-            # (19:Yak. Maliyet özel olarak aşağıda işlenecek)
-            for c, idx in enumerate([22, 23, 25, 26, 27, 28, 29, 30], 17):
-                # Yak. Maliyet sütunu olan 19. indeksi (c=19) atla
-                actual_col = c if c < 19 else c + 1
-                val = str(r[idx]) if idx < len(r) and r[idx] is not None else "-"
-                if actual_col in (23, 24, 25):
-                    val = format_number(val)
-                    item = QTableWidgetItem(val)
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    self.table.setItem(row_idx, actual_col, item)
-                else:
-                    self.table.setItem(row_idx, actual_col, QTableWidgetItem(val))
+            # Col 20: İhale Türü (DB 22)
+            self.table.setItem(row_idx, 20, QTableWidgetItem(str(r[22]) if len(r) > 22 else "-"))
 
-            # Yak. Maliyet (Tablo Sütun 19, DB index 24)
+            # Col 21: İhale Usulü (DB 23)
+            self.table.setItem(row_idx, 21, QTableWidgetItem(str(r[23]) if len(r) > 23 else "-"))
+
+            # Col 22: Yak. Maliyet (DB 24) – Sortable numeric
             yak_val_raw = r[24] if len(r) > 24 and r[24] else 0.0
             try:
-                # Eğer veri string ise sayıya çevirmeye çalış (format_money için)
                 if isinstance(yak_val_raw, str):
                     yak_val_num = float(yak_val_raw.replace('.', '').replace(',', '.'))
                 else:
                     yak_val_num = float(yak_val_raw)
             except:
                 yak_val_num = 0.0
-
             yak_item = SortableTableWidgetItem(f"{display_money(yak_val_num)}")
             yak_item.setData(Qt.ItemDataRole.UserRole, yak_val_num)
             yak_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self.table.setItem(row_idx, 19, yak_item)
+            self.table.setItem(row_idx, 22, yak_item)
 
-            # 26:Test Detay (B), 27:Test Detay (S)
+            # Col 23: Cari No (DB 28)
+            val23 = str(r[28]) if len(r) > 28 and r[28] else ""
+            if val23 and val23.replace('.', '').isdigit():
+                val23 = "{:,}".format(int(val23.replace('.', ''))).replace(',', '.')
+            self.table.setItem(row_idx, 23, QTableWidgetItem(val23))
+
+            # Col 24: Proje No (DB 29)
+            val24 = str(r[29]) if len(r) > 29 and r[29] else ""
+            if val24 and val24.replace('.', '').isdigit():
+                val24 = "{:,}".format(int(val24.replace('.', ''))).replace(',', '.')
+            self.table.setItem(row_idx, 24, QTableWidgetItem(val24))
+
+            # Col 25: Kart No (DB 30)
+            val25 = str(r[30]) if len(r) > 30 and r[30] else ""
+            if val25 and val25.replace('.', '').isdigit():
+                val25 = "{:,}".format(int(val25.replace('.', ''))).replace(',', '.')
+            self.table.setItem(row_idx, 25, QTableWidgetItem(val25))
+
+            # Col 26: Test Detay (B) (DB 20)
             self.table.setItem(row_idx, 26, QTableWidgetItem(str(r[20]) if len(r) > 20 else "-"))
+
+            # Col 27: Test Detay (S) (DB 21)
             self.table.setItem(row_idx, 27, QTableWidgetItem(str(r[21]) if len(r) > 21 else "-"))
 
-            # İşlem Butonları (Son sütun: 28)
+            # Col 28: İşlem Butonları
             action_widget = QWidget()
             action_layout = QHBoxLayout(action_widget)
             action_layout.setContentsMargins(0, 0, 0, 0)
@@ -5314,7 +5306,7 @@ class LogWidget(QWidget):
         self.table.setSortingEnabled(True)
         self.table.setItemDelegateForColumn(4, WordWrapDelegate(4))
         self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-        self.table.verticalHeader().setDefaultSectionSize(50)
+        self.table.verticalHeader().setDefaultSectionSize(25)
 
         header = self.table.horizontalHeader()
         self.table.setColumnWidth(0, 70)   # ID
@@ -5364,7 +5356,7 @@ class LogWidget(QWidget):
                 item = self.table.item(i, 4)
                 if item and item.text():
                     rect = fm.boundingRect(0, 0, detay_col - 10, 0, Qt.TextFlag.TextWordWrap, item.text())
-                    self.table.setRowHeight(i, min(rect.height() + 10, 120))
+                    self.table.setRowHeight(i, min(rect.height() + 5, 60))
 
     def _extract_ikn_firma(self, details):
         ikn = ""
@@ -5423,7 +5415,7 @@ class LogWidget(QWidget):
             detay_item.setToolTip(str(log[4]))
             self.table.setItem(i, 4, detay_item)
         self.table.setSortingEnabled(True)
-        self.table.verticalHeader().setDefaultSectionSize(50)
+        self.table.verticalHeader().setDefaultSectionSize(25)
         QTimer.singleShot(50, self.recalc_row_heights)
 
     def clear_log_filters(self):
@@ -5479,7 +5471,7 @@ class SettingsDialog(QDialog):
             "Yak. Maliyet": "Yaklaşık Maliyet",
             "İhale Tarihi": "İhale Tarihi",
             "İşe Başlama": "İşe Başlama Tarihi",
-            "İşin Süresi": "İşin Süresi (Hesaplanan)",
+            "Parti Teslim Süresi": "Parti Teslim Süresi (Hesaplanan)",
             "Cari No": "Cari No",
             "Proje No": "Proje No",
             "Kart No": " Kart No",
@@ -5493,9 +5485,10 @@ class SettingsDialog(QDialog):
         scroll_grid.setSpacing(10)
 
         # Temel Sütunlar ve Yeni İhale Bilgileri
-        # 0:IKN, 1:Firma, 2:İhale Adı, 3:Sözl. Tarihi, 4:Parti, 5:Parti Tarihi, 6:Miktar, 7:Detay, 8:Tutar, 16:Açıklama
-        # 17:Tür, 18:Usul, 19:YakMaliyet, 20:IhaleTarih, 21:IseBaslama, 22:Sure, 23:Cari, 24:Proje, 25:Kart
-        basic_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
+        # 0:IKN, 1:Firma, 2:İhale Adı, 3:İhale Tarihi, 4:Sözl. Tarihi, 5:İşe Başlama, 6:Parti Teslim Süresi,
+        # 7:Parti Tarihi, 8:Parti No, 9:Miktar, 10:Malzeme Detayı, 11:Tutar, 19:Açıklama,
+        # 20:İhale Türü, 21:İhale Usulü, 22:Yak. Maliyet, 23:Cari No, 24:Proje No, 25:Kart No
+        basic_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 19, 20, 21, 22, 23, 24, 25]
         grid_idx = 0
 
         for col in basic_indices:
@@ -5511,8 +5504,8 @@ class SettingsDialog(QDialog):
             self.col_checkboxes.append((col, cb))
             grid_idx += 1
 
-        # İşlem Adımları Grubu (9-15 arası sütunlar + 26, 27)
-        action_step_indices = list(range(9, 16)) + [26, 27]
+        # İşlem Adımları Grubu (12-18 arası sütunlar + 26, 27)
+        action_step_indices = list(range(12, 19)) + [26, 27]
         cb_action_group = QCheckBox("🔄 İşlem Adımları ve Detaylar")
         # Eğer adımlardan en az biri görünürse grubu seçili başlat
         any_visible = any(not detail_widget.table.isColumnHidden(i) for i in action_step_indices)
@@ -5751,8 +5744,8 @@ class SettingsDialog(QDialog):
 
     def select_min_columns(self):
         """Sadece asgari/zorunlu sütunları seçili bırakır."""
-        # Asgari Sütun İndeksleri: IKN(0), Firma(1), İhale Adı(2), Sözl.Tarihi(3), Parti(4), PartiTarihi(5), Tutar(8)
-        min_indices = [0, 1, 2, 4, 5, 6, 8, 16]
+        # Asgari Sütun İndeksleri: IKN(0), Firma(1), İhale Adı(2), Parti Tarihi(7), Parti No(8), Miktar(9), Tutar(11)
+        min_indices = [0, 1, 2, 7, 8, 9, 11]
         for col_data, cb in self.col_checkboxes:
             if isinstance(col_data, list):
                 cb.setChecked(False) # İşlem adımları asgari değildir
@@ -5978,7 +5971,7 @@ class AboutDialog(QDialog):
 
         # Info Text
         info_text = """
-        <h3 style='color: #6366f1; margin-bottom:0;'>İhale Takip Uygulaması v7.41</h3>
+        <h3 style='color: #6366f1; margin-bottom:0;'>İhale Takip Uygulaması v7.45</h3>
         <br>
         <b>Geliştirici Bilgileri:</b></p>
         <ul>
@@ -6030,7 +6023,7 @@ class ShortcutsDialog(QDialog):
             ("Ctrl+N", "Yeni ihale kaydı ekle"),
             ("Ctrl+F", "Arama çubuğuna odaklan (Tüm İhale ve Parti Bilgileri Sayfasında)"),
             ("Alt+A", "Ayarlar penceresini aç"),
-            ("F5", "Tüm verileri yenile"),
+            ("F5", "Tüm verileri yenile, Parti teslim sürelerini hesapla"),
             ("Ctrl+1", "Güncel İhale sekmesine geç"),
             ("Ctrl+2", "Tüm İhale Bilgileri sekmesine geç"),
             ("Ctrl+3", "Takvim Görünümü sekmesine geç"),
@@ -6170,6 +6163,7 @@ class MainWindow(QMainWindow):
         self.setup_shortcuts()
 
     def refresh_all(self):
+        recalculate_parti_teslim_suresi()
         self.summary_widget.refresh_summary()
         self.calendar_widget.refresh_data()
         self.detail_widget.refresh_data()
