@@ -342,11 +342,19 @@ Standart kullanıcı sadece kendi şifresini değiştirebilir.
 
 ![ss_39](img/ss_39.png)
 
+**Yedek Yönetimi** Paneli
+
+![ss_40](img/ss_40.png)
+
+**Klavye Kısayolları** Bilgi Penceresi
+
+![ss_41](img/ss_41.png)
+
 ### Hakkında Penceresi
 
 Uygulama sürüm bilgisi, geliştirici ve teknik detaylar.
 
-![ss_40](img/ss_40.png)
+![ss_42](img/ss_42.png)
 
 ## 👨‍💻 Geliştirici ve Destek
 
