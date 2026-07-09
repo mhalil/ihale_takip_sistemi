@@ -52,6 +52,7 @@ class Field(IntEnum):
     CARI_NO = 28
     PROJE_NO = 29
     KART_NO = 30
+    TESLIM_AMBARI = 34
 
 # --- OTURUM (Global degiskenlerden kurtul) ---
 class SessionMeta(type):
@@ -104,6 +105,7 @@ MIGRATIONS = [
     ("ALTER TABLE data ADD COLUMN `Kart No` TEXT DEFAULT ''", "Kart No"),
     ("ALTER TABLE data ADD COLUMN `Test Detay B` TEXT DEFAULT ''", "Test Detay B"),
     ("ALTER TABLE data ADD COLUMN `Test Detay S` TEXT DEFAULT ''", "Test Detay S"),
+    ("ALTER TABLE data ADD COLUMN `Teslim Ambari` TEXT DEFAULT ''", "Teslim Ambari"),
 ]
 
 def run_migrations():
@@ -239,6 +241,8 @@ QHeaderView::section { background-color: #e2e8f0; color: #475569; }
 QScrollBar:vertical { background: #e2e8f0; }
 QScrollBar::handle:vertical { background: #94a3b8; }
 QScrollArea, QScrollArea QWidget, QTabWidget::pane { background-color: #f1f5f9; border: none; }
+QMenu { background-color: white; color: #1e293b; border: 1px solid #cbd5e1; }
+QMenu::item:selected { background-color: #6366f1; color: white; }
 QCalendarWidget QToolButton { padding: 4px 14px; min-width: 70px; }
 QCalendarWidget QSpinBox { width: 80px; padding: 2px; }
 QCalendarWidget QWidget#qt_calendar_navigationbar { min-height: 40px; }
@@ -1001,7 +1005,8 @@ def get_db_connection():
             "Parti Teslim Suresi" TEXT,
             "Cari No" TEXT,
             "Proje No" TEXT,
-            "Kart No" TEXT
+            "Kart No" TEXT,
+            "Teslim Ambari" TEXT
         )
     ''')
     try:
@@ -1028,7 +1033,7 @@ def get_db_connection():
             conn.commit()
         except: pass
 
-    for col in ["Testler Basladi Detay", "Test Sonuclari Geldi Detay", "Ise Baslama Tarihi"]:
+    for col in ["Testler Basladi Detay", "Test Sonuclari Geldi Detay", "Ise Baslama Tarihi", "Teslim Ambari"]:
         try:
             cursor.execute(f"SELECT `{col}` FROM data LIMIT 1")
         except:
@@ -1098,8 +1103,27 @@ def get_db_connection():
             details TEXT
         )
     ''')
+    cursor.execute("CREATE TABLE IF NOT EXISTS ambarlar (id INTEGER PRIMARY KEY, name TEXT UNIQUE)")
+    cursor.execute("SELECT count(*) FROM ambarlar")
+    if cursor.fetchone()[0] == 0:
+        for amb in ["Merkez Ambar", "Şantiye Ambarı", "Lojistik Ambar"]:
+            cursor.execute("INSERT OR IGNORE INTO ambarlar (name) VALUES (?)", (amb,))
+        conn.commit()
+
     conn.commit()
     return conn
+
+def get_ambar_list():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM ambarlar ORDER BY name")
+        result = [r[0] for r in cursor.fetchall()]
+        conn.close()
+        return result
+    except Exception as e:
+        print(f"Ambar listesi hatası: {e}")
+        return []
 
 def log_action(action, details=""):
     try:
@@ -2564,6 +2588,7 @@ class BulkEditDialog(QDialog):
             ("cb_update_yak_maliyet", "yak_maliyet_edit", "Yaklaşık Maliyet:", None, 24),
             ("cb_update_ihale_tarihi", "ihale_tarihi_edit", "İhale Tarihi:", "date", 25),
             ("cb_update_ise_baslama", "ise_baslama_edit", "İşe Başlama Tarihi:", "date", 26),
+            ("cb_update_ambar", "ambar_edit", "Teslim Ambarı:", None, 31),
             ("cb_update_cari", "cari_edit", "Cari No:", None, 28),
             ("cb_update_proje", "proje_edit", "Proje No:", None, 29),
             ("cb_update_kart", "kart_edit", "Kart No:", None, 30)
@@ -2596,6 +2621,15 @@ class BulkEditDialog(QDialog):
                 edit.addItems(get_ihale_usulu_list())
                 default_val = common_value(db_idx)
                 edit.setCurrentText(default_val)
+            elif "ambar_edit" == edit_name:
+                edit = QComboBox()
+                edit.setEditable(True)
+                edit.addItems(get_ambar_list())
+                default_val = common_value(db_idx)
+                if default_val:
+                    edit.setCurrentText(default_val)
+                else:
+                    edit.setCurrentIndex(-1)
             else:
                 edit = QLineEdit()
                 raw_val = common_value(db_idx)
@@ -2750,6 +2784,9 @@ class BulkEditDialog(QDialog):
             if self.cb_update_kart.isChecked():
                 changes_summary.append("Kart No")
                 value_details.append(f"Kart No: {self.kart_edit.text()}")
+            if self.cb_update_ambar.isChecked():
+                changes_summary.append("Teslim Ambarı")
+                value_details.append(f"Teslim Ambarı: {self.ambar_edit.currentText()}")
 
             if not changes_summary:
                 QMessageBox.warning(self, "Uyarı", "Hiçbir değişiklik seçilmedi.")
@@ -2822,6 +2859,9 @@ class BulkEditDialog(QDialog):
                     if self.cb_update_cari.isChecked(): update_record(rowid, "Cari No", self.cari_edit.text(), cursor)
                     if self.cb_update_proje.isChecked(): update_record(rowid, "Proje No", self.proje_edit.text(), cursor)
                     if self.cb_update_kart.isChecked(): update_record(rowid, "Kart No", self.kart_edit.text(), cursor)
+                    if self.cb_update_ambar.isChecked():
+                        amb_val = str(self.ambar_edit.currentText())
+                        cursor.execute("UPDATE data SET `Teslim Ambari` = ? WHERE rowid = ?", (amb_val, rowid))
 
                     for state_text, state_val in status_updates.items():
                         db_col = COLUMN_MAPPING.get(state_text, state_text)
@@ -2861,7 +2901,7 @@ class ClickableCard(QFrame):
         self.parent_summary = parent_summary
         self.mode = mode
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip("Tam düzenleme için çift tıklayın 🛠️" if mode == 'full' else "Hızlı durum güncelleme için çift tıklayın ⚡")
+        self.setToolTip("Verileri düzenlemek için çift tıklayın 🛠️" if mode == 'full' else "İşlem adımlarını güncellemek için çift tıklayın ⚡")
         self.setStyleSheet("background: transparent; border: none;")
 
     def mouseDoubleClickEvent(self, event):
@@ -2873,7 +2913,8 @@ class ClickableCard(QFrame):
 
     def contextMenuEvent(self, event):
         menu = QtWidgets.QMenu(self)
-        bulk_edit_action = menu.addAction("📦 Bu İhalenin Tüm Partilerini Topluca Düzenle")
+        menu.setStyleSheet("QMenu { background-color: #f8fafc; color: #1e293b; border: 1px solid #cbd5e1; } QMenu::item { padding: 6px 20px; } QMenu::item:selected { background-color: #6366f1; color: white; }")
+        bulk_edit_action = menu.addAction("📦 İhalenin Tüm Parti Verilerini Topluca Düzenle")
 
         action = menu.exec(event.globalPos())
         if action == bulk_edit_action:
@@ -2942,6 +2983,7 @@ class SummaryWidget(QWidget):
         self.cb_sort.currentTextChanged.connect(self.apply_filters)
 
         btn_clr = QPushButton("Temizle")
+        btn_clr.setToolTip("Temizle (Alt+X)")
         btn_clr.clicked.connect(self.clear_filters)
 
         self.btn_show_all = QPushButton("Tümünü Göster")
@@ -2956,13 +2998,6 @@ class SummaryWidget(QWidget):
         self.search.setMinimumHeight(28)
         self.search.textChanged.connect(self.apply_filters)
         header_layout.addWidget(self.search)
-
-        btn_search_clr = QPushButton("x")
-        btn_search_clr.setFixedWidth(41)
-        btn_search_clr.setFixedHeight(28)
-        btn_search_clr.setToolTip("Aramayı temizle")
-        btn_search_clr.clicked.connect(self.clear_search)
-        header_layout.addWidget(btn_search_clr)
 
         header_layout.addWidget(QLabel("Sıralama:"))
         header_layout.addWidget(self.cb_sort)
@@ -3218,10 +3253,6 @@ class SummaryWidget(QWidget):
         self.search.clear()
         self.apply_filters()
 
-    def clear_search(self):
-        self.search.clear()
-        self.apply_filters()
-
     def eventFilter(self, obj, event):
         if obj == self.cb_step.view().viewport() and event.type() == QEvent.Type.MouseButtonRelease:
             index = self.cb_step.view().indexAt(event.position().toPoint())
@@ -3327,12 +3358,15 @@ class SummaryWidget(QWidget):
             except: pass
         duration_lbl = QLabel(f"⏱️ Süre: {dur_str}")
 
-        for lbl in [firma_lbl, miktar_lbl, tutar_lbl, parti_lbl, tarih_lbl, duration_lbl]:
+        amb_val = str(record[34]) if len(record) > 34 and record[34] else "-"
+        amb_lbl = QLabel(f"🏭 Ambar: {amb_val}")
+
+        for lbl in [firma_lbl, miktar_lbl, tutar_lbl, parti_lbl, tarih_lbl, duration_lbl, amb_lbl]:
             lbl_bg_color = "#f1f5f9"
             lbl_style = f"background-color: {lbl_bg_color}; border-radius: 4px; padding: 3px 8px;"
             lbl.setStyleSheet(f"color: {sub_text_color}; font-size: 14px; {lbl_style}")
             info_layout.addWidget(lbl)
-            if lbl != duration_lbl:
+            if lbl != amb_lbl:
                 info_layout.addSpacing(10)
 
         info_layout.addStretch()
@@ -3470,6 +3504,7 @@ class TenderWidget(QWidget):
         search_layout.addWidget(self.search_edit, stretch=1)
 
         btn_clear = QPushButton("Temizle")
+        btn_clear.setToolTip("Temizle (Alt+X)")
         btn_clear.clicked.connect(self.clear_search)
         search_layout.addWidget(btn_clear)
 
@@ -3970,6 +4005,7 @@ class FirmSummaryWidget(QWidget):
 
         filter_layout.addSpacing(10)
         self.btn_clear = QPushButton("Temizle")
+        self.btn_clear.setToolTip("Temizle (Alt+X)")
         self.btn_clear.clicked.connect(self.clear_filters)
         filter_layout.addWidget(self.btn_clear)
 
@@ -4582,15 +4618,10 @@ class DetailWidget(QWidget):
         top_btn_layout.addWidget(btn_export)
 
         btn_new = QPushButton("➕ Yeni İhale Ekle")
+        btn_new.setToolTip("Yeni İhale Ekle (Ctrl+N)")
         btn_new.setObjectName("SuccessBtn")
         btn_new.clicked.connect(self.open_new_tender)
         top_btn_layout.addWidget(btn_new)
-
-        btn_backup = QPushButton("💾 Güncel Verinin Yedeğini Al")
-        btn_backup.setObjectName("InfoBtn")
-        btn_backup.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_backup.clicked.connect(self.backup_now)
-        top_btn_layout.addWidget(btn_backup)
 
         top_btn_layout.addSpacing(40)
 
@@ -4605,7 +4636,7 @@ class DetailWidget(QWidget):
         # Filtre Paneli
         f_panel = QHBoxLayout()
         self.search = QLineEdit(); self.search.setPlaceholderText("Metin ara...")
-        btn_clr = QPushButton("Temizle"); btn_clr.clicked.connect(self.clear_filters)
+        btn_clr = QPushButton("Temizle"); btn_clr.setToolTip("Temizle (Alt+X)"); btn_clr.clicked.connect(self.clear_filters)
 
         self.cb_date_filter = QCheckBox("Tarih Filtresi:")
         self.date_start = QDateEdit()
@@ -4637,7 +4668,7 @@ class DetailWidget(QWidget):
         layout.addLayout(f_panel)
 
         self.search.textChanged.connect(self.apply_filters)
-        self.table = QTableWidget(); self.table.setColumnCount(29)
+        self.table = QTableWidget();         self.table.setColumnCount(30)
         self.table.setAlternatingRowColors(True)
         self.table.setHorizontalHeaderLabels([
             "IKN", "Firma", "İhale Adı",
@@ -4645,7 +4676,7 @@ class DetailWidget(QWidget):
             "Parti No", "Miktar", "Malzeme Detayı", "Tutar",
             "Ambar", "Bşk. Haber", "Test B.", "Test S.", "Rapor", "Kabul", "Ödeme",
             "Açıklama", "İhale Türü", "İhale Usulü", "Yak. Maliyet", "Cari No", "Proje No", "Kart No",
-            "Test Detay (B)", "Test Detay (S)", "İşlem"
+            "Test Detay (B)", "Test Detay (S)", "Teslim Ambarı", "İşlem"
         ])
 
         # Sütun Genişlikleri
@@ -4663,10 +4694,11 @@ class DetailWidget(QWidget):
         self.table.setColumnWidth(9, 80)   # Miktar
         self.table.setColumnWidth(10, 200) # Malzeme Detayi
         self.table.setColumnWidth(11, 120) # Tutar
-        for i in range(12, 29):
+        for i in range(12, 30):
             self.table.setColumnWidth(i, 100)
         self.table.setColumnWidth(2, 250) # İhale adı geniş kalsın
-        self.table.setColumnWidth(28, 130) # İşlem sütunu
+        self.table.setColumnWidth(28, 120) # Teslim Ambarı
+        self.table.setColumnWidth(29, 130) # İşlem sütunu
 
         self.table.setSortingEnabled(True)
 
@@ -4683,8 +4715,8 @@ class DetailWidget(QWidget):
 
     def load_column_settings(self):
         settings = QSettings("IhaleSystem", f"UserPrefs/{Session.user}")
-        # IKN(0), Firma(1), Ihale(2), Ihale Tarihi(3), Sozlesme(4), Ise Baslama(5), Parti Teslim(6), Parti Tarihi(7), Parti No(8), Miktar(9), Malzeme(10), Tutar(11), Aciklama(19)
-        min_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 19]
+        # IKN(0), Firma(1), Ihale(2), Ihale Tarihi(3), Sozlesme(4), Ise Baslama(5), Parti Teslim(6), Parti Tarihi(7), Parti No(8), Miktar(9), Malzeme(10), Tutar(11), Aciklama(19), Teslim Ambari(28) DB:33
+        min_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 19, 28]
 
         has_settings = False
         for c in range(self.table.columnCount()):
@@ -4694,8 +4726,8 @@ class DetailWidget(QWidget):
 
         # Sütunları gizle/göster
         for col in range(self.table.columnCount()):
-            # 'Islem' sütunu (son sütun) her zaman görünür kalsın
-            if col == self.table.columnCount() - 1:
+            # 'Islem' sütunu (index 29) her zaman görünür kalsın
+            if col == 29:
                 self.table.setColumnHidden(col, False)
                 continue
 
@@ -4720,9 +4752,9 @@ class DetailWidget(QWidget):
             return
 
         try:
-            # Table visualization column count minus the "İşlem" column
-            col_count = self.table.columnCount() - 1
-            headers = [self.table.horizontalHeaderItem(i).text() for i in range(col_count)]
+            # "İşlem" sütunu (index 29) hariç tüm sütunları dışa aktar
+            export_cols = [i for i in range(self.table.columnCount()) if i != 29]
+            headers = [self.table.horizontalHeaderItem(i).text() for i in export_cols]
 
             with open(path, mode='w', encoding='utf-8-sig', newline='') as file:
                 writer = csv.writer(file, delimiter=';')
@@ -4730,7 +4762,7 @@ class DetailWidget(QWidget):
 
                 for row in range(self.table.rowCount()):
                     row_data = []
-                    for col in range(col_count):
+                    for col in export_cols:
                         item = self.table.item(row, col)
                         row_data.append(item.text() if item else "")
                     writer.writerow(row_data)
@@ -4968,7 +5000,13 @@ class DetailWidget(QWidget):
             # Col 27: Test Detay (S) (DB 21)
             self.table.setItem(row_idx, 27, QTableWidgetItem(str(r[21]) if len(r) > 21 else "-"))
 
-            # Col 28: İşlem Butonları
+            # Col 28: Teslim Ambarı (DB 33)
+            amb_val = str(r[34]) if len(r) > 34 and r[34] else ""
+            amb_item = QTableWidgetItem(amb_val)
+            amb_item.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(row_idx, 28, amb_item)
+
+            # Col 29: İşlem Butonları
             action_widget = QWidget()
             action_layout = QHBoxLayout(action_widget)
             action_layout.setContentsMargins(0, 0, 0, 0)
@@ -4986,7 +5024,7 @@ class DetailWidget(QWidget):
                 action_layout.addWidget(btn_delete)
 
             action_layout.addStretch()
-            self.table.setCellWidget(row_idx, 28, action_widget)
+            self.table.setCellWidget(row_idx, 29, action_widget)
 
         self.table.setSortingEnabled(True)  # Sıralamayı tekrar aç
 
@@ -5333,6 +5371,7 @@ class LogWidget(QWidget):
         filter_layout.addWidget(self.cb_action)
 
         btn_clr = QPushButton("Temizle")
+        btn_clr.setToolTip("Temizle (Alt+X)")
         btn_clr.clicked.connect(self.clear_log_filters)
         filter_layout.addWidget(btn_clr)
         layout.addLayout(filter_layout)
@@ -5518,6 +5557,7 @@ class SettingsDialog(QDialog):
             "Kart No": " Kart No",
             "Test Detay (B)": "Test Başladı Notu",
             "Test Detay (S)": "Test Sonuç Notu",
+            "Teslim Ambarı": "Teslim Ambarı",
         }
 
         scroll = QScrollArea()
@@ -5528,8 +5568,8 @@ class SettingsDialog(QDialog):
         # Temel Sütunlar ve Yeni İhale Bilgileri
         # 0:IKN, 1:Firma, 2:İhale Adı, 3:İhale Tarihi, 4:Sözl. Tarihi, 5:İşe Başlama, 6:Parti Teslim Süresi,
         # 7:Parti Tarihi, 8:Parti No, 9:Miktar, 10:Malzeme Detayı, 11:Tutar, 19:Açıklama,
-        # 20:İhale Türü, 21:İhale Usulü, 22:Yak. Maliyet, 23:Cari No, 24:Proje No, 25:Kart No
-        basic_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 19, 20, 21, 22, 23, 24, 25]
+        # 20:İhale Türü, 21:İhale Usulü, 22:Yak. Maliyet, 23:Cari No, 24:Proje No, 25:Kart No, 28:Teslim Ambarı
+        basic_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 19, 20, 21, 22, 23, 24, 25, 28]
         grid_idx = 0
 
         for col in basic_indices:
@@ -5658,7 +5698,39 @@ class SettingsDialog(QDialog):
 
         tabs.addTab(usulu_tab, "📋 İhale Usulü")
 
-        # Tab 5: Yedek Yönetimi
+        # Tab 5: Ambar Yönetimi
+        ambar_tab = QWidget()
+        ambar_layout = QVBoxLayout(ambar_tab)
+        ambar_layout.addWidget(QLabel("<b>Teslim Ambarı Listesi:</b>"))
+
+        self.ambar_list_widget = QtWidgets.QListWidget()
+        self.refresh_ambar_list()
+        ambar_layout.addWidget(self.ambar_list_widget)
+
+        ambar_btn_row = QHBoxLayout()
+        self.ambar_input = QLineEdit()
+        self.ambar_input.setPlaceholderText("Yeni ambar adı...")
+        btn_add_ambar = QPushButton("Ekle")
+        btn_add_ambar.setObjectName("SuccessBtn")
+        btn_add_ambar.clicked.connect(self.add_ambar)
+
+        btn_edit_ambar = QPushButton("Düzenle")
+        btn_edit_ambar.setObjectName("PrimaryBtn")
+        btn_edit_ambar.clicked.connect(self.edit_ambar)
+
+        btn_del_ambar = QPushButton("Seçiliyi Sil")
+        btn_del_ambar.setObjectName("DangerBtn")
+        btn_del_ambar.clicked.connect(self.delete_ambar)
+
+        ambar_btn_row.addWidget(self.ambar_input)
+        ambar_btn_row.addWidget(btn_add_ambar)
+        ambar_btn_row.addWidget(btn_edit_ambar)
+        ambar_btn_row.addWidget(btn_del_ambar)
+        ambar_layout.addLayout(ambar_btn_row)
+
+        tabs.addTab(ambar_tab, "🏭 Ambarlar")
+
+        # Tab 6: Yedek Yönetimi
         backup_tab = QWidget()
         backup_layout = QVBoxLayout(backup_tab)
         backup_layout.addWidget(QLabel("<b>💾 Yedek Dosyaları:</b>"))
@@ -5839,6 +5911,12 @@ class SettingsDialog(QDialog):
             return
         name = current.text()
         fname = name.split("] ", 1)[-1].split(" (")[0] if "] " in name else name
+
+        # Önce mevcut veritabanının yedeğini al
+        QMessageBox.information(self, "Yedekleniyor",
+            "Geri yüklemeden önce mevcut veritabanının yedeği alınacak.")
+        self.do_backup()
+
         reply = QMessageBox.question(self, "Geri Yükle",
             f"'{fname}' dosyasından geri yüklemek tüm mevcut verilerinizi değiştirir!\n\nDevam etmek istediğinize emin misiniz?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
@@ -5999,6 +6077,65 @@ class SettingsDialog(QDialog):
             except Exception as e:
                 QMessageBox.critical(self, "Hata", f"Düzenleme hatası: {e}")
 
+    # --- Ambar Yönetimi ---
+    def refresh_ambar_list(self):
+        self.ambar_list_widget.clear()
+        for amb in get_ambar_list():
+            self.ambar_list_widget.addItem(amb)
+
+    def add_ambar(self):
+        name = self.ambar_input.text().strip()
+        if not name: return
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO ambarlar (name) VALUES (?)", (name,))
+            conn.commit()
+            conn.close()
+            self.ambar_input.clear()
+            self.refresh_ambar_list()
+        except sqlite3.IntegrityError:
+            QMessageBox.warning(self, "Uyarı", "Bu ambar zaten listede mevcut.")
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Hata oluştu: {e}")
+
+    def delete_ambar(self):
+        current_item = self.ambar_list_widget.currentItem()
+        if not current_item: return
+        name = current_item.text()
+        confirm = QMessageBox.question(self, "Onay", f"'{name}' ambarını silmek istediğinize emin misiniz?",
+                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if confirm != QMessageBox.StandardButton.Yes: return
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM ambarlar WHERE name = ?", (name,))
+            conn.commit()
+            conn.close()
+            self.refresh_ambar_list()
+        except Exception as e:
+            QMessageBox.critical(self, "Hata", f"Silme hatası: {e}")
+
+    def edit_ambar(self):
+        current_item = self.ambar_list_widget.currentItem()
+        if not current_item:
+            QMessageBox.warning(self, "Uyarı", "Lütfen düzenlemek istediğiniz ambarı seçin.")
+            return
+        old_name = current_item.text()
+        new_name, ok = QtWidgets.QInputDialog.getText(self, "Ambar Düzenle", "Ambar Adı:", QLineEdit.EchoMode.Normal, old_name)
+        if ok and new_name.strip() and new_name.strip() != old_name:
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("UPDATE ambarlar SET name = ? WHERE name = ?", (new_name.strip(), old_name))
+                conn.commit()
+                conn.close()
+                self.refresh_ambar_list()
+            except sqlite3.IntegrityError:
+                QMessageBox.warning(self, "Uyarı", "Bu isimde bir ambar zaten mevcut.")
+            except Exception as e:
+                QMessageBox.critical(self, "Hata", f"Düzenleme hatası: {e}")
+
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -6012,7 +6149,7 @@ class AboutDialog(QDialog):
 
         # Info Text
         info_text = """
-        <h3 style='color: #6366f1; margin-bottom:0;'>İhale Takip Uygulaması v7.46</h3>
+        <h3 style='color: #6366f1; margin-bottom:0;'>İhale Takip Uygulaması v7.52</h3>
         <br>
         <b>Geliştirici Bilgileri:</b></p>
         <ul>
@@ -6047,7 +6184,7 @@ class ShortcutsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Klavye Kısayolları")
-        self.setFixedSize(520, 500)
+        self.setFixedSize(520, 520)
         self.setup_ui()
 
     def setup_ui(self):
@@ -6062,8 +6199,9 @@ class ShortcutsDialog(QDialog):
 
         shortcuts = [
             ("Ctrl+N", "Yeni ihale kaydı ekle"),
-            ("Ctrl+F", "Arama çubuğuna odaklan (Tüm İhale ve Parti Bilgileri Sayfasında)"),
+            ("Ctrl+F", "Arama çubuğuna git"),
             ("Alt+A", "Ayarlar penceresini aç"),
+            ("Alt+X", "Filtreyi temizle"),
             ("F5", "Tüm verileri yenile, Parti teslim sürelerini hesapla"),
             ("Ctrl+1", "Güncel İhale sekmesine geç"),
             ("Ctrl+2", "Tüm İhale Bilgileri sekmesine geç"),
@@ -6133,6 +6271,7 @@ class MainWindow(QMainWindow):
         top_bar.addSpacing(5)
 
         self.btn_settings = QPushButton("⚙️ Ayarlar")
+        self.btn_settings.setToolTip("Ayarlar (Alt+A)")
         self.btn_settings.setObjectName("PrimaryBtn")
         self.btn_settings.setFixedWidth(110)
         self.btn_settings.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -6198,6 +6337,11 @@ class MainWindow(QMainWindow):
         if Session.can_view_logs:
             self.tabs.addTab(self.log_widget, "📜 İşlem Kayıtları")
 
+        tab_bar = self.tabs.tabBar()
+        tab_keys = ["Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4", "Ctrl+5", "Ctrl+6"]
+        for i in range(tab_bar.count()):
+            tab_bar.setTabToolTip(i, f"{tab_bar.tabText(i)} ({tab_keys[i]})")
+
         layout.addWidget(self.tabs)
 
         # Klavye kısayolları (widget'lar hazır olduktan sonra)
@@ -6251,12 +6395,35 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+F"), self, self.focus_search)
         QShortcut(QKeySequence("Alt+A"), self, self.show_settings)
         QShortcut(QKeySequence("F5"), self, self.refresh_all)
+        QShortcut(QKeySequence("Alt+X"), self, self.clear_active_tab)
         for i, key in enumerate(["Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4", "Ctrl+5", "Ctrl+6"],0):
             QShortcut(QKeySequence(key), self, lambda idx=i: self.tabs.setCurrentIndex(idx))
 
+    def clear_active_tab(self):
+        w = self.tabs.currentWidget()
+        if w == self.summary_widget:
+            self.summary_widget.clear_filters()
+        elif w == self.detail_widget:
+            self.detail_widget.clear_filters()
+        elif w == self.tender_widget:
+            self.tender_widget.clear_search()
+        elif w == self.firm_widget:
+            self.firm_widget.clear_filters()
+        elif w == self.log_widget:
+            self.log_widget.clear_log_filters()
+
     def focus_search(self):
-        self.tabs.setCurrentWidget(self.detail_widget)
-        self.detail_widget.search.setFocus()
+        w = self.tabs.currentWidget()
+        if w == self.summary_widget:
+            self.summary_widget.search.setFocus()
+        elif w == self.detail_widget:
+            self.detail_widget.search.setFocus()
+        elif w == self.tender_widget:
+            self.tender_widget.search_edit.setFocus()
+        elif w == self.firm_widget:
+            self.firm_widget.search_edit.setFocus()
+        elif w == self.log_widget:
+            self.log_widget.search_edit.setFocus()
 
 
 if __name__ == "__main__":
