@@ -364,7 +364,7 @@ Uygulama sürüm bilgisi, geliştirici ve teknik detaylar.
 
 **Teknik Bilgiler:**
 
-* Platform: Google Antigravity ve OpenCode
+* Platform: Google Antigravity, OpenCode ve Cline
 * Metodoloji: Vibe Coding
 * Progrmalama Dili: Python 3.12.4
 * Framework: PyQt6 (Riverbank Computing)
