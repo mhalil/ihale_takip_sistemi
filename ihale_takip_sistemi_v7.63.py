@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                 QFileDialog, QTextEdit, QCompleter, QStyleOptionViewItem, QGroupBox
                                 )
 from PySide6.QtCore import Qt, QDate, QTimer, QRegularExpression, QSettings, QEvent
-from PySide6.QtGui import QShortcut, QKeySequence
+from PySide6.QtGui import QShortcut, QKeySequence, QAction
 from PySide6.QtGui import (QIntValidator, QRegularExpressionValidator, QFont,
                             QColor,  QTextCharFormat, QBrush, QPainter, QStandardItem, QStandardItemModel)
 
@@ -1681,6 +1681,45 @@ def _calc_sure_from_baslama_teslim(baslama_raw, teslim_raw):
     except Exception:
         return None
 
+def calc_parti_teslim_from_baslama(yeni_baslama, eski_baslama=None, eski_teslim=None, eski_sure=None):
+    """Yeni 'Ise Baslama Tarihi' degerine gore 'Parti Son Teslim Tarihi' hesaplar.
+
+    Kayitli parti ornegi korunur: aradaki gun farki (eski teslim - eski baslama)
+    yeni baslama tarihinin uzerine eklenir. Isе baslama isin ilk gunu sayildigi icin
+    ilk partide 29 gun (30 gunluk sure) eklenir; partiler arasi 30'ar gun fark
+    oldugu gibi yeni tarihler arasinda da korunur.
+
+    Eski baslama/teslim yoksa 'Parti Teslim Suresi'ne dusulur (sure - 1 gun).
+    Hicbiri yoksa veya tarihler cozulemezse None doner.
+    """
+    if not yeni_baslama:
+        return None
+    try:
+        nb = datetime.strptime(str(yeni_baslama)[:10], "%Y-%m-%d")
+    except Exception:
+        return None
+
+    offset = None
+    if eski_baslama and eski_teslim:
+        try:
+            b = datetime.strptime(str(eski_baslama)[:10], "%Y-%m-%d")
+            t = datetime.strptime(str(eski_teslim)[:10], "%Y-%m-%d")
+            diff = (t - b).days
+            # Teslim baslamadan onceyse kayit tutarsiz; sureye dusulur
+            if diff >= 0:
+                offset = diff
+        except Exception:
+            offset = None
+
+    if offset is None:
+        days = _sure_to_days(eski_sure)
+        if not days or days <= 0:
+            return None
+        offset = days - 1
+
+    return (nb + timedelta(days=offset)).strftime("%Y-%m-%d")
+
+
 def _fmt_log_val(v):
     """Log icin degeri guvenli ve kisaltilmis metne cevirir."""
     s = str(v) if v is not None else ""
@@ -2608,7 +2647,7 @@ class EditDialog(QDialog):
         if not teslim_loaded:
             self.tarih_edit.setDate(QDate.currentDate())
             self.tarih_edit.setToolTip("Veritabanında teslim tarihi boş ve hesaplanamadı.")
-        scroll_basic_layout.addWidget(QLabel("Teslim Tarihi:"))
+        scroll_basic_layout.addWidget(QLabel("Parti Teslim Tarihi:"))
         scroll_basic_layout.addWidget(self.tarih_edit)
 
         # DB'deki baglanti bilgileri (ise baslama / teslim suresi) bilgi amacli gosterilir
@@ -2810,7 +2849,10 @@ class EditDialog(QDialog):
             adv_grid.addWidget(QLabel("<b>İhale Tarihi:</b>"), 3, 0)
             adv_grid.addWidget(self.ihale_tarihi_edit, 3, 1)
 
-            self.ise_baslama_edit = _make_date_edit(26, "İşe Başlama", read_only=True)
+            self.ise_baslama_edit = _make_date_edit(26, "İşe Başlama")
+            self.ise_baslama_edit.setToolTip(
+                "İşe Başlama Tarihi değiştirilince Parti Teslim Tarihi otomatik "
+                "yeniden hesaplanır. Elle hesaplamak için F5 tuşuna basın.")
             adv_grid.addWidget(QLabel("<b>İşe Başlama Tarihi:</b>"), 4, 0)
             adv_grid.addWidget(self.ise_baslama_edit, 4, 1)
 
@@ -2845,11 +2887,14 @@ class EditDialog(QDialog):
             adv_grid.addWidget(QLabel("<b>Kart No:</b>"), 8, 0)
             adv_grid.addWidget(self.kart_edit, 8, 1)
 
-            adv_ro_note = QLabel("🔒 Bu sekmede yalnızca <b>Teslim Ambarı</b> değiştirilebilir. "
+            adv_ro_note = QLabel("🔒 Bu sekmede yalnızca <b>Teslim Ambarı</b> ve "
+                                 "<b>İşe Başlama Tarihi</b> değiştirilebilir. "
                                  "<b>İhale Türü</b>, <b>İhale Usulü</b>, <b>Yaklaşık Maliyet</b>, "
-                                 "<b>İhale Tarihi</b>, <b>İşe Başlama Tarihi</b>, <b>Cari No</b>, "
+                                 "<b>İhale Tarihi</b>, <b>Cari No</b>, "
                                  "<b>Proje No</b> ve <b>Kart No</b> bilgileri yalnızca "
-                                 "<b>Toplu Kayıt Düzenle</b> penceresi aracılığıyla değiştirilebilir.")
+                                 "<b>Toplu Kayıt Düzenle</b> penceresi aracılığıyla değiştirilebilir. "
+                                 "İşe Başlama Tarihi değişince <b>Parti Teslim Tarihi</b> otomatik "
+                                 "yeniden hesaplanır (veya <b>F5</b>).")
             adv_ro_note.setStyleSheet("color: #b45309; font-size: 11px;")
             adv_ro_note.setWordWrap(True)
             adv_grid.addWidget(adv_ro_note, 9, 0, 1, 2)
@@ -2873,8 +2918,8 @@ class EditDialog(QDialog):
             layout_adv.addWidget(scroll_adv)
             self.tabs.addTab(tab_adv, "🛠️ Detaylı Bilgiler")
 
-            # Tarihler değiştikçe süre önizlemesini tazele
-            self.ise_baslama_edit.dateChanged.connect(lambda _d: self._refresh_sure_preview())
+            # İşe Başlama Tarihi değiştikçe Parti Teslim Tarihi yeniden hesaplanır
+            self.ise_baslama_edit.dateChanged.connect(lambda _d: self._recalculate_parti_teslim())
             self.tarih_edit.dateChanged.connect(lambda _d: self._refresh_sure_preview())
             self._refresh_sure_preview()
 
@@ -2884,6 +2929,67 @@ class EditDialog(QDialog):
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("İptal")
         buttons.accepted.connect(self.save_changes); buttons.rejected.connect(self.reject)
         main_layout.addWidget(buttons)
+
+        # F5: Parti Teslim Tarihi'ni İşe Başlama Tarihi'ne göre yeniden hesapla
+        self.f5_teslim_action = QAction("Parti Teslim Tarihini Yeniden Hesapla", self)
+        self.f5_teslim_action.setShortcut(QKeySequence("F5"))
+        self.f5_teslim_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self.f5_teslim_action.triggered.connect(self._recalculate_parti_teslim)
+        self.addAction(self.f5_teslim_action)
+
+    def _current_baslama_str(self):
+        """İşe Başlama Tarihi alanının değerini 'yyyy-MM-dd' olarak döner; yoksa None."""
+        if not hasattr(self, "ise_baslama_edit"):
+            return None
+        if self.ise_baslama_edit.date() == self._EMPTY_DATE:
+            return None
+        return self.ise_baslama_edit.date().toString("yyyy-MM-dd")
+
+    def _recalculate_parti_teslim(self):
+        """Parti Teslim Tarihi'ni İşe Başlama Tarihi'ne göre yeniden hesaplar.
+
+        Taban veriler (kayıtlı işe başlama / teslim / süre) veritabanındaki
+        kayıttan okunur; böylece art arda F5'e basıldığında tarih kaymaz.
+        Partiler arası gün farkı korunur: ilk partide 29 gün (30 günlük süre)
+        eklenir, sonraki partiler kendi aralıklarıyla ötelenir.
+        """
+        yeni_baslama = self._current_baslama_str()
+        if not yeni_baslama:
+            return
+
+        rec = self.record
+        eski_baslama = str(rec[26])[:10] if len(rec) > 26 and rec[26] else None
+        eski_teslim = str(rec[5])[:10] if len(rec) > 5 and rec[5] else None
+        eski_sure = str(rec[27]) if len(rec) > 27 and rec[27] else None
+
+        yeni_teslim = calc_parti_teslim_from_baslama(yeni_baslama, eski_baslama, eski_teslim, eski_sure)
+        if not yeni_teslim:
+            self.tarih_edit.setToolTip(
+                "Parti Teslim Tarihi hesaplanamadı: kayıtta işe başlama tarihi ve "
+                "parti teslim süresi bulunmuyor.")
+            return
+
+        try:
+            d = datetime.strptime(yeni_teslim, "%Y-%m-%d")
+        except Exception:
+            return
+
+        self.tarih_edit.setDate(QDate(d.year, d.month, d.day))
+
+        kaynak = ""
+        if eski_baslama and eski_teslim:
+            try:
+                gun_fark = (datetime.strptime(yeni_teslim, "%Y-%m-%d")
+                            - datetime.strptime(yeni_baslama, "%Y-%m-%d")).days
+                kaynak = (f"İşe Başlama ({yeni_baslama}) + {gun_fark} gün\n"
+                          f"Kayıtlı parti düzeni korundu "
+                          f"(eski başlama {eski_baslama} → eski teslim {eski_teslim}).")
+            except Exception:
+                kaynak = ""
+        if not kaynak:
+            kaynak = f"İşe Başlama ({yeni_baslama}) + Parti Teslim Süresi ({eski_sure or '-'})"
+        self.tarih_edit.setToolTip(f"Hesaplandı: {yeni_teslim}\n{kaynak}")
+        self._refresh_sure_preview()
 
     def _refresh_sure_preview(self):
         """Detaylı Bilgiler sekmesinde Parti Teslim Suresi önizlemesini günceller."""
@@ -2917,6 +3023,53 @@ class EditDialog(QDialog):
                 """Alanı yazar; yazılamazsa kullanıcıya bildirilecek şekilde kaydeder."""
                 if not update_record(rowid, field, value):
                     basarisiz_alanlar.append(field)
+
+            # --- Kayıttan ÖNCE yapılan korumalar (hiçbir alan yazılmadan) ---
+
+            # 1) Detaylı Bilgiler sekmesinde salt okunur görünen alanlar
+            #    (İhale Türü / İhale Usulü) düzenlenemez. Kutular yazılabilir
+            #    durumda olduğu için kullanıcı bir şey yazdığında sessizce
+            #    kaybolmasın, uyarılsın. (Yaklaşık Maliyet zaten setReadOnly'dır.)
+            if not self.simplified:
+                degisen_salt_okunur = []
+                for ad, widget, db_idx in (
+                    ("İhale Türü", getattr(self, "turu_edit", None), 22),
+                    ("İhale Usulü", getattr(self, "usulu_edit", None), 23),
+                ):
+                    if widget is None:
+                        continue
+                    yeni = widget.currentText().strip()
+                    eski = str(old[db_idx]) if len(old) > db_idx and old[db_idx] else ""
+                    if yeni != eski.strip():
+                        degisen_salt_okunur.append(ad)
+
+                if degisen_salt_okunur:
+                    cevap = QMessageBox.question(
+                        self, "Kaydedilmeyecek Değişiklik",
+                        "Şu alanlar yalnızca **Toplu Kayıt Düzenle** penceresi "
+                        "aracılığıyla değiştirilebilir ve burada "
+                        "kaydedilmeyecek:\n\n• "
+                        + "\n• ".join(degisen_salt_okunur)
+                        + "\n\nYaptığınız değişiklikler kaybolacak. Devam edilsin mi?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.No)
+                    if cevap != QMessageBox.StandardButton.Yes:
+                        return
+
+            # 2) İşe Başlama Tarihi boşaltılamaz: kayıttaki tarih sessizce
+            #    silinmesin, kullanıcı bilgilendirilsin.
+            if not self.simplified:
+                old_baslama_saved = str(old[26])[:10] if len(old) > 26 and old[26] else ""
+                if old_baslama_saved and not self._current_baslama_str():
+                    QMessageBox.warning(
+                        self, "İşe Başlama Tarihi Boşaltılamaz",
+                        f"Bu kaydın İşe Başlama Tarihi kayıtlı:\n\n"
+                        f"    {format_date_tr(old_baslama_saved)}\n\n"
+                        "Parti Teslim Tarihi bu tarihten hesaplandığı için alan "
+                        "boşaltılamaz.\n\nBu kaydın işe başlama tarihi olması "
+                        "gerekmiyorsa alanı 'Toplu Kayıt Düzenle' penceresinden "
+                        "temizleyin.")
+                    return
 
             # Temel Bilgiler (simplified modda sadece mevcut alanları kaydet)
             if not self.simplified:
@@ -2995,12 +3148,11 @@ class EditDialog(QDialog):
 
             # Detaylı Bilgiler sekmesi
             if not self.simplified:
-                # NOT: Bu sekmede yalnızca "Teslim Ambarı" düzenlenebilir.
-                # İhale Türü, İhale Usulü, Yaklaşık Maliyet, İhale Tarihi ve
-                # İşe Başlama Tarihi bilinçli olarak burada güncellenmez; bu
-                # alanlar yalnızca BulkEditDialog (Toplu Kayıt Düzenle)
-                # üzerinden değiştirilebilir. Aynı şekilde Cari No / Proje No /
-                # Kart No da yalnızca toplu düzenleme ile değiştirilir.
+                # NOT: Bu sekmede "Teslim Ambarı" ve "İşe Başlama Tarihi" düzenlenebilir.
+                # İhale Türü, İhale Usulü, Yaklaşık Maliyet ve İhale Tarihi bilinçli
+                # olarak burada güncellenmez; bu alanlar yalnızca BulkEditDialog
+                # (Toplu Kayıt Düzenle) üzerinden değiştirilebilir. Aynı şekilde
+                # Cari No / Proje No / Kart No da yalnızca toplu düzenleme ile değiştirilir.
 
                 new_ambar = self.ambar_edit.currentText().strip()
                 old_ambar = str(old[34]) if len(old) > 34 and old[34] else ""
@@ -3008,8 +3160,19 @@ class EditDialog(QDialog):
                     _upd( "Teslim Ambari", new_ambar)
                     change_details.append(f"Teslim Ambarı: '{_fmt_log_val(old_ambar)}' → '{_fmt_log_val(new_ambar)}'")
 
+                # İşe Başlama Tarihi: değişirse Parti Teslim Tarihi (tarih_edit)
+                # zaten _recalculate_parti_teslim() ile güncellendiği için burada
+                # yalnızca başlama tarihi kaydedilir.
+                new_baslama = self._current_baslama_str() or ""
+                old_baslama = str(old[26])[:10] if len(old) > 26 and old[26] else ""
+                if new_baslama != old_baslama:
+                    _upd( "Ise Baslama Tarihi", new_baslama)
+                    change_details.append(
+                        f"İşe Başlama Tarihi: {format_date_tr(old_baslama) or '-'} → "
+                        f"{format_date_tr(new_baslama) or '-'}")
+
                 # Parti Teslim Suresi: teslim ve ise baslama tarihlerinden hesaplanir
-                final_baslama = str(old[26])[:10] if len(old) > 26 and old[26] else ""
+                final_baslama = new_baslama or old_baslama
                 final_teslim = new_tarih
                 if final_teslim and final_baslama:
                     try:
@@ -3213,9 +3376,11 @@ class BulkEditDialog(QDialog):
         self.cb_update_test_result.toggled.connect(self.test_result_bulk_edit.setEnabled)
 
         steps_grid = QGridLayout()
-        steps_grid.setVerticalSpacing(12)
+        steps_grid.setVerticalSpacing(4)
         for i, (text, idx) in enumerate(steps):
-            steps_grid.setRowMinimumHeight(i, 45)
+            # Satır yüksekliği en büyük hücreye (laboratuvar kutusu, ~30px) göre
+            # ayarlanır; eski 45px + 12px aralık gereksiz yere boşluk bırakıyordu.
+            steps_grid.setRowMinimumHeight(i, 32)
             cb = QCheckBox(text)
             cb.setTristate(True); cb.setCheckState(Qt.CheckState.PartiallyChecked)
             cb.setStyleSheet("font-size: 13px;")
@@ -3530,6 +3695,8 @@ class BulkEditDialog(QDialog):
                     if self.cb_update_yak_maliyet.isChecked(): update_record(rowid, "Yak. Maliyet", parse_money(self.yak_maliyet_edit.text()), cursor)
                     try:
                         final_teslim_str = str(r[5])[:10] if len(r) > 5 and r[5] else ""
+                        old_baslama_str = str(r[26])[:10] if len(r) > 26 and r[26] else ""
+                        old_sure_str = str(r[27]) if len(r) > 27 and r[27] else ""
                         if do_sozlesme:
                             old_sozlesme_str = str(r[17])[:10] if len(r) > 17 and r[17] else ""
                             if old_sozlesme_str:
@@ -3538,18 +3705,26 @@ class BulkEditDialog(QDialog):
                                 if delta != 0 and final_teslim_str:
                                     old_tes_dt = datetime.strptime(final_teslim_str, "%Y-%m-%d")
                                     final_teslim_str = (old_tes_dt + timedelta(days=delta)).strftime("%Y-%m-%d")
-                        final_start_str = str(r[26])[:10] if len(r) > 26 and r[26] else ""
+                        final_start_str = old_baslama_str
                         if self.cb_update_ise_baslama.isChecked():
                             final_start_str = self.ise_baslama_edit.date().toString("yyyy-MM-dd")
+                            # İşe Başlama değiştiyse "Parti Tarihi" de yeniden hesaplanır.
+                            # Kayıtlı parti düzeni korunur: aradaki gün farkı yeni başlama
+                            # tarihinin üzerine eklenir (ilk partide 29 gün / 30 günlük süre).
+                            hesaplanan_teslim = calc_parti_teslim_from_baslama(
+                                final_start_str, old_baslama_str, final_teslim_str, old_sure_str)
+                            if hesaplanan_teslim and hesaplanan_teslim != final_teslim_str:
+                                final_teslim_str = hesaplanan_teslim
+                                update_record(rowid, "Parti Son Teslim Tarihi", hesaplanan_teslim, cursor)
                         if final_teslim_str and final_start_str:
                             start_dt = datetime.strptime(final_start_str, "%Y-%m-%d")
                             end_dt = datetime.strptime(final_teslim_str, "%Y-%m-%d")
                             calc_dur = (end_dt - start_dt).days + 1
-                            old_dur = str(r[27]) if len(r) > 27 and r[27] else ""
+                            old_dur = old_sure_str
                             if old_dur != f"{calc_dur} Gün":
                                 update_record(rowid, "Parti Teslim Suresi", f"{calc_dur} Gün", cursor)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"Toplu düzenleme parti tarihi hesaplama hatası (rowid={rowid}): {e}")
                     if self.cb_update_ihale_tarihi.isChecked(): update_record(rowid, "Ihale Tarihi", self.ihale_tarihi_edit.date().toString("yyyy-MM-dd"), cursor)
                     if self.cb_update_ise_baslama.isChecked(): update_record(rowid, "Ise Baslama Tarihi", self.ise_baslama_edit.date().toString("yyyy-MM-dd"), cursor)
                     if self.cb_update_cari.isChecked(): update_record(rowid, "Cari No", self.cari_edit.text(), cursor)
@@ -3611,10 +3786,13 @@ class ClickableCard(QFrame):
         menu = QtWidgets.QMenu(self)
         menu.setStyleSheet("QMenu { background-color: #f8fafc; color: #1e293b; border: 1px solid #cbd5e1; } QMenu::item { padding: 6px 20px; } QMenu::item:selected { background-color: #3b82f6; color: white; }")
         bulk_edit_action = menu.addAction("📦 İhalenin Tüm Parti Verilerini Topluca Düzenle")
+        filter_tender_action = menu.addAction("🔍 Bu İhaleye Filtre Uygula")
 
         action = menu.exec(event.globalPos())
         if action == bulk_edit_action:
             self.open_bulk_edit_for_tender()
+        elif action == filter_tender_action:
+            self.parent_summary.apply_tender_filter(self.record)
 
     def open_bulk_edit_for_tender(self):
         # Bu ihaleye ait (aynı IKN ve Firma) tüm kayıtları DB'den çek
@@ -3948,8 +4126,44 @@ class SummaryWidget(QWidget):
         self.search.clear()
         self.apply_filters()
 
+    def _select_in_combo(self, combo, text):
+        """Açılır listede değer yoksa ekleyip seçer; seçim yapılamazsa False döner."""
+        if not text:
+            return False
+        if combo.findText(text) == -1:
+            combo.addItem(text)
+        combo.setCurrentText(text)
+        return combo.currentText() == text
+
+    def apply_tender_filter(self, record):
+        """Kartın üzerine sağ tıklandığında: IKN + Firma + İhale adına göre filtreler."""
+        ikn = str(record[1]).strip() if len(record) > 1 and record[1] else ""
+        firma = str(record[2]).strip() if len(record) > 2 and record[2] else ""
+        ihale = str(record[3]).strip() if len(record) > 3 and record[3] else ""
+
+        # Sadece IKN/Firma/İhale kriteri geçerli olsun diye işlem adımı filtresi sıfırlanır
+        self.step_deselect_all()
+
+        # Firma seçimi cb_tender listesini yeniden doldurur; önce firma, sonra ihale atanır
+        if not self._select_in_combo(self.cb_firm, firma):
+            self.cb_firm.setCurrentIndex(0)
+        self._select_in_combo(self.cb_tender, ihale)
+
+        # IKN için serbest metin araması kullanılır
+        self.search.setText(ikn)
+        self.cb_sort.setCurrentIndex(0)
+        self.apply_filters()
+
     def eventFilter(self, obj, event):
-        if obj == self.cb_step.view().viewport() and event.type() == QEvent.Type.MouseButtonRelease:
+        # Pencere kapanırken cb_step'ın C++ nesnesi zaten silinmiş olabilir;
+        # hasattr yeterli değil (Python niteliği durur, nesne yoktur) -> RuntimeError.
+        try:
+            viewport = self.cb_step.view().viewport()
+        except (AttributeError, RuntimeError):
+            # Nesne yoksa olayı da iletmeyiz: 'obj' (viewport) aynı anda
+            # silinmiş olabilir ve super() çağrısı RuntimeError verirdi.
+            return False
+        if obj == viewport and event.type() == QEvent.Type.MouseButtonRelease:
             index = self.cb_step.view().indexAt(event.position().toPoint())
             item = self.cb_step_model.itemFromIndex(index)
             if item:
@@ -6482,6 +6696,7 @@ class SettingsDialog(QDialog):
         # Sabit genişlik yerine başlangıç boyutu + minimum: kullanıcı pencereyi
         # kendi isteğine göre büyütebilir / küçültebilir.
         self.setMinimumSize(700, 480)
+        # 7 sekme ~875px gerektiriyor; 980px'te hepsi varsayılan boyutta sığar
         self.resize(980, 700)
         self.parent_window = parent
         self.setup_ui()
@@ -7211,7 +7426,7 @@ class AboutDialog(QDialog):
 
         # Info Text
         info_text = """
-        <h3 style='color: #3b82f6; margin-bottom:0;'>İhale Takip Uygulaması v7.61</h3>
+        <h3 style='color: #3b82f6; margin-bottom:0;'>İhale Takip Uygulaması v7.63</h3>
         <br>
         <b>Geliştirici Bilgileri:</b></p>
         <ul>
@@ -7265,6 +7480,7 @@ class ShortcutsDialog(QDialog):
             ("Alt+A", "Ayarlar penceresini aç"),
             ("Alt+X", "Filtreyi temizle"),
             ("F5", "Tüm verileri yenile, Parti teslim sürelerini hesapla"),
+            ("F5", "Kayıt Düzenle penceresinde Parti teslim tarihini yeniden hesapla"),
             ("Ctrl+1", "Güncel İhale sekmesine geç"),
             ("Ctrl+2", "Tüm İhale Bilgileri sekmesine geç"),
             ("Ctrl+3", "Takvim Görünümü sekmesine geç"),
@@ -7490,7 +7706,8 @@ class MainWindow(QMainWindow):
             self.tender_widget.clear_search()
         elif w == self.firm_widget:
             self.firm_widget.clear_filters()
-        elif w == self.log_widget:
+        elif w is not None and w == getattr(self, "log_widget", None):
+            # log_widget yalnızca yetkili rollerde oluşturulur (Session.can_view_logs)
             self.log_widget.clear_log_filters()
 
     def focus_search(self):
@@ -7503,7 +7720,8 @@ class MainWindow(QMainWindow):
             self.tender_widget.search_edit.setFocus()
         elif w == self.firm_widget:
             self.firm_widget.search_edit.setFocus()
-        elif w == self.log_widget:
+        elif w is not None and w == getattr(self, "log_widget", None):
+            # log_widget yalnızca yetkili rollerde oluşturulur (Session.can_view_logs)
             self.log_widget.search_edit.setFocus()
 
 
