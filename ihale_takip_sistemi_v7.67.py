@@ -7606,7 +7606,7 @@ class AboutDialog(QDialog):
 
         # Info Text
         info_text = """
-        <h3 style='color: #3b82f6; margin-bottom:0;'>İhale Takip Uygulaması v7.66</h3>
+        <h3 style='color: #3b82f6; margin-bottom:0;'>İhale Takip Uygulaması v7.67</h3>
         <br>
         <b>Geliştirici Bilgileri:</b></p>
         <ul>
