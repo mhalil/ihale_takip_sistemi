@@ -5,6 +5,9 @@ import shutil
 import csv
 import hashlib
 import secrets
+import socket
+import time
+import uuid
 from datetime import datetime, timedelta
 
 from PySide6 import QtWidgets
@@ -1248,16 +1251,68 @@ def check_and_create_backup():
 
 
 # --- VERİ TABANI FONKSİYONLARI ---
-def get_db_connection():
-    # Determine the directory of the executable or script
+# ÖNEMLİ: data tablosuna yeni sütun eklenirse bu sürüm ARTIRILMALIDIR; aksi halde
+# mevcut veritabanlarında hızlı yol migration'ı atlar.
+SCHEMA_VERSION = 1
+_EXPECTED_DATA_COLUMN_COUNT = 34
+_REQUIRED_TABLES = {
+    "data", "labs", "ihale_turu_list", "ihale_usulu_list",
+    "users", "logs", "ambarlar", "app_meta", "active_sessions",
+}
+_REQUIRED_DATA_COLUMNS = {
+    "IKN", "Fatura Kesildi", "Parti Teslim Suresi", "Kart No",
+    "Yaklasik Maliyet", "Test Detay S", "Teslim Ambari",
+}
+
+
+def get_db_path():
+    """veriler.db'nin tam yolu (exe ile aynı klasör / betiğin bulunduğu klasör)."""
     if getattr(sys, 'frozen', False):
         base_path = os.path.dirname(sys.executable)
     else:
         base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, 'veriler.db')
 
-    db_path = os.path.join(base_path, 'veriler.db')
+
+def _schema_is_current(cursor):
+    """Şema hazırsa True döner: her bağlantıda init/migration çalışmasını önler.
+
+    Kontroller: sürüm damgası (app_meta), gerekli tablolar ve data sütunları.
+    Herhangi biri tutmazsa tam init çalışır (kendini onaran yol).
+    """
+    try:
+        row = cursor.execute(
+            "SELECT value FROM app_meta WHERE key = 'schema_version'").fetchone()
+        if not row or int(row[0]) < SCHEMA_VERSION:
+            return False
+        tables = {r[0] for r in cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()}
+        if not _REQUIRED_TABLES.issubset(tables):
+            return False
+        cols = {r[1] for r in cursor.execute("PRAGMA table_info(data)").fetchall()}
+        if len(cols) != _EXPECTED_DATA_COLUMN_COUNT:
+            return False
+        if not _REQUIRED_DATA_COLUMNS.issubset(cols):
+            return False
+        return True
+    except Exception:
+        return False
+
+
+def get_db_connection():
+    db_path = get_db_path()
     conn = sqlite3.connect(db_path, check_same_thread=False)
+    # Ağ paylaşımında kısa süreli kilitlerde 5 sn bekle
+    try:
+        conn.execute("PRAGMA busy_timeout = 5000")
+    except sqlite3.Error:
+        pass
     cursor = conn.cursor()
+
+    # Hızlı yol: şema zaten kuruluysa init/migration/seeding atlanır.
+    # (Ortak ağ klasöründe her bağlantıda yazma kilidi alınmasını önler.)
+    if _schema_is_current(cursor):
+        return conn
 
     # --- DB INIT & MIGRATIONS ---
     # SÜTUN SIRASI ÖNEMLİDİR: Uygulamadaki tüm kayıt indeksleri (Field enum ve
@@ -1300,6 +1355,23 @@ def get_db_connection():
             "Test Detay B" TEXT,
             "Test Detay S" TEXT,
             "Teslim Ambari" TEXT
+        )
+    ''')
+    # Şema sürüm damgası (hızlı yol için) ve aktif oturum takibi
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS app_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS active_sessions (
+            session_id TEXT PRIMARY KEY,
+            username TEXT NOT NULL,
+            role TEXT DEFAULT 'user',
+            hostname TEXT,
+            started_at TEXT,
+            last_seen_epoch INTEGER
         )
     ''')
     try:
@@ -1404,8 +1476,169 @@ def get_db_connection():
             cursor.execute("INSERT OR IGNORE INTO ambarlar (name) VALUES (?)", (amb,))
         conn.commit()
 
+    # Şema kuruldu → sonraki bağlantılar hızlı yolu kullanır
+    cursor.execute(
+        "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', ?)",
+        (str(SCHEMA_VERSION),))
     conn.commit()
     return conn
+
+# --- AKTİF OTURUM TAKİBİ (uygulamayı o an açmış kullanıcılar) ---
+PRESENCE_TIMEOUT_SEC = 120      # Bu süreden eski kayıtlar "hayalet" sayılır
+PRESENCE_ACTIVE_SEC = 60        # 🟢 eşiği (kalanlar 🟡 sessiz)
+PRESENCE_INTERVAL_MS = 20000    # Kalp atışı aralığı
+
+_PRESENCE_ID = None
+_PRESENCE_USER = ""
+_PRESENCE_ROLE = "user"
+_PRESENCE_HOST = ""
+_PRESENCE_STARTED_AT = ""
+
+
+def _presence_connect(timeout=5.0):
+    """Presence için hafif bağlantı: init/migration çalıştırmaz.
+
+    Okuma tarafında kısa timeout kullanılır; kilit varsa arayüz uzun süre donmaz.
+    """
+    conn = sqlite3.connect(get_db_path(), timeout=timeout, check_same_thread=False)
+    try:
+        conn.execute(f"PRAGMA busy_timeout = {int(timeout * 1000)}")
+    except sqlite3.Error:
+        pass
+    return conn
+
+
+def _presence_hostname():
+    try:
+        return socket.gethostname()
+    except Exception:
+        return ""
+
+
+def presence_start(username, role):
+    """Oturumu aktif listeye ekler ve eski kayıtları temizler."""
+    global _PRESENCE_ID, _PRESENCE_USER, _PRESENCE_ROLE, _PRESENCE_HOST, _PRESENCE_STARTED_AT
+    presence_stop()
+    _PRESENCE_ID = uuid.uuid4().hex
+    _PRESENCE_USER = username or ""
+    _PRESENCE_ROLE = role or "user"
+    _PRESENCE_HOST = _presence_hostname()
+    _PRESENCE_STARTED_AT = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+    try:
+        # İlk kayıtta tam init kullanılır: tablo ve migration'lar garanti edilir
+        conn = get_db_connection()
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO active_sessions "
+                "(session_id, username, role, hostname, started_at, last_seen_epoch) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (_PRESENCE_ID, _PRESENCE_USER, _PRESENCE_ROLE, _PRESENCE_HOST,
+                 _PRESENCE_STARTED_AT, int(time.time())))
+            conn.commit()
+        finally:
+            conn.close()
+        presence_cleanup()
+    except Exception as e:
+        # Presence kritik değildir: hata uygulamayı durdurmaz
+        print(f"Aktif oturum kaydı hatası: {e}")
+    return _PRESENCE_ID
+
+
+def presence_touch():
+    """Kalp atışı. Ağ/DB hatasında sessizce False döner."""
+    if not _PRESENCE_ID:
+        return False
+    try:
+        conn = _presence_connect()
+        try:
+            now = int(time.time())
+            cur = conn.execute(
+                "UPDATE active_sessions SET last_seen_epoch = ? WHERE session_id = ?",
+                (now, _PRESENCE_ID))
+            if cur.rowcount == 0:
+                # Kayıt dışarıdan silinmişse (ör. karşı taraf temizliği) yeniden oluştur
+                conn.execute(
+                    "INSERT OR REPLACE INTO active_sessions "
+                    "(session_id, username, role, hostname, started_at, last_seen_epoch) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (_PRESENCE_ID, _PRESENCE_USER, _PRESENCE_ROLE, _PRESENCE_HOST,
+                     _PRESENCE_STARTED_AT, now))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+    except Exception:
+        return False
+
+
+def presence_stop():
+    """Oturum kaydını siler (çıkış / pencere kapanışı)."""
+    global _PRESENCE_ID
+    session_id = _PRESENCE_ID
+    _PRESENCE_ID = None
+    if not session_id:
+        return
+    try:
+        conn = _presence_connect()
+        try:
+            conn.execute("DELETE FROM active_sessions WHERE session_id = ?", (session_id,))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+def presence_cleanup():
+    """Zaman aşımına düşmüş (çökmüş) oturumları temizler."""
+    try:
+        conn = _presence_connect()
+        try:
+            conn.execute("DELETE FROM active_sessions WHERE last_seen_epoch < ?",
+                         (int(time.time()) - PRESENCE_TIMEOUT_SEC,))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+def presence_list():
+    """Aktif oturumları yaşıyla birlikte döndürür.
+
+    Okuma başarısız olursa RuntimeError yükseltir (çağıran uyarı gösterir).
+    """
+    now = int(time.time())
+    try:
+        conn = _presence_connect(timeout=1.5)
+        try:
+            rows = conn.execute(
+                "SELECT session_id, username, role, hostname, started_at, last_seen_epoch "
+                "FROM active_sessions WHERE last_seen_epoch >= ? "
+                "ORDER BY last_seen_epoch DESC, username",
+                (now - PRESENCE_TIMEOUT_SEC,)).fetchall()
+        finally:
+            conn.close()
+    except Exception as e:
+        raise RuntimeError(str(e))
+
+    result = []
+    for session_id, username, role, hostname, started_at, last_seen in rows:
+        try:
+            age = max(0, now - int(last_seen or 0))
+        except (TypeError, ValueError):
+            age = 0
+        result.append({
+            "session_id": session_id or "",
+            "username": username or "",
+            "role": role or "user",
+            "hostname": hostname or "-",
+            "started_at": started_at or "",
+            "last_seen_epoch": last_seen,
+            "age_sec": age,
+        })
+    return result
+
 
 def get_ambar_list():
     try:
@@ -7606,7 +7839,7 @@ class AboutDialog(QDialog):
 
         # Info Text
         info_text = """
-        <h3 style='color: #3b82f6; margin-bottom:0;'>İhale Takip Uygulaması v7.67</h3>
+        <h3 style='color: #3b82f6; margin-bottom:0;'>İhale Takip Uygulaması v7.68</h3>
         <br>
         <b>Geliştirici Bilgileri:</b></p>
         <ul>
@@ -7702,6 +7935,141 @@ class ShortcutsDialog(QDialog):
         btn_close.clicked.connect(self.accept)
         layout.addWidget(btn_close, alignment=Qt.AlignCenter)
 
+class ActiveUsersDialog(QDialog):
+    """O an uygulamayı açmış kullanıcıları gösterir (ortak veriler.db üzerinden)."""
+
+    AUTO_REFRESH_MS = 5000
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Aktif Kullanıcılar")
+        self.setMinimumSize(860, 400)
+        self.setup_ui()
+        self.refresh_list()
+        self.timer = QTimer(self)
+        self.timer.setInterval(self.AUTO_REFRESH_MS)
+        self.timer.timeout.connect(self.refresh_list)
+        self.timer.start()
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(10)
+
+        title = QLabel("👥 Aktif Kullanıcılar")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #1e293b;")
+        layout.addWidget(title)
+
+        self.lbl_info = QLabel("")
+        self.lbl_info.setStyleSheet("color: #475569;")
+        layout.addWidget(self.lbl_info)
+
+        self.table = QTableWidget(0, 6)
+        self.table.setHorizontalHeaderLabels(
+            ["Kullanıcı", "Rol", "Bilgisayar", "Oturum Başlangıcı", "Son Görülme", "Durum"])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.setAlternatingRowColors(True)
+        self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        header = self.table.horizontalHeader()
+        for col in range(5):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.table)
+
+        self.lbl_status = QLabel("")
+        self.lbl_status.setStyleSheet("color: #b45309;")
+        self.lbl_status.setWordWrap(True)
+        layout.addWidget(self.lbl_status)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        self.btn_refresh = QPushButton("🔄 Yenile")
+        self.btn_refresh.setObjectName("PrimaryBtn")
+        self.btn_refresh.setFixedWidth(120)
+        self.btn_refresh.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_refresh.clicked.connect(self.refresh_list)
+        btn_row.addWidget(self.btn_refresh)
+        btn_close = QPushButton("Kapat")
+        btn_close.setObjectName("SecondaryBtn")
+        btn_close.setFixedWidth(110)
+        btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_close.clicked.connect(self.accept)
+        btn_row.addWidget(btn_close)
+        layout.addLayout(btn_row)
+
+    def refresh_list(self):
+        try:
+            sessions = presence_list()
+        except Exception as e:
+            # Son başarılı liste korunur; yalnızca uyarı gösterilir
+            self.lbl_status.setText(f"⚠️ Liste yenilenemedi (ağ/DB kilidi): {e}")
+            return
+
+        self.lbl_status.setText("")
+        now = datetime.now().strftime("%H:%M:%S")
+        self.lbl_info.setText(
+            f"🟢 {len(sessions)} aktif oturum · son güncelleme {now} "
+            f"(her {self.AUTO_REFRESH_MS // 1000} sn yenilenir)")
+        self.fill_table(sessions)
+
+    def fill_table(self, sessions):
+        self.table.clearSpans()
+        self.table.setRowCount(0)
+
+        if not sessions:
+            self.table.setRowCount(1)
+            item = QTableWidgetItem("Şu anda başka aktif oturum yok.")
+            item.setTextAlignment(Qt.AlignCenter)
+            item.setForeground(QColor("#64748b"))
+            self.table.setItem(0, 0, item)
+            self.table.setSpan(0, 0, 1, 6)
+            return
+
+        self.table.setRowCount(len(sessions))
+        for row, s in enumerate(sessions):
+            is_me = bool(_PRESENCE_ID) and s["session_id"] == _PRESENCE_ID
+            age = s["age_sec"]
+            if age <= PRESENCE_ACTIVE_SEC:
+                durum, renk = "🟢 Aktif", "#15803d"
+            else:
+                durum, renk = "🟡 Sessiz", "#b45309"
+
+            cells = [
+                s["username"] + (" (siz)" if is_me else ""),
+                s["role"],
+                s["hostname"],
+                s["started_at"],
+                self._age_text(age),
+                durum,
+            ]
+            for col, text in enumerate(cells):
+                item = QTableWidgetItem(text)
+                item.setTextAlignment(Qt.AlignCenter)
+                if col == 5:
+                    item.setForeground(QColor(renk))
+                if is_me:
+                    font = item.font()
+                    font.setBold(True)
+                    item.setFont(font)
+                self.table.setItem(row, col, item)
+
+    @staticmethod
+    def _age_text(age):
+        if age < 5:
+            return "az önce"
+        if age < 60:
+            return f"{age} sn önce"
+        return f"{age // 60} dk önce"
+
+    def done(self, result):
+        if getattr(self, "timer", None) is not None:
+            self.timer.stop()
+        super().done(result)
+
+
 # --- ANA PENCERE ---
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -7720,6 +8088,17 @@ class MainWindow(QMainWindow):
         # Üst Bar (Tema Değiştirici)
         top_bar = QHBoxLayout()
         top_bar.addStretch()
+
+        # O an uygulamayı açmış kullanıcılar
+        self.btn_active = QPushButton("👥 Aktif")
+        self.btn_active.setToolTip("O an uygulamayı açmış kullanıcılar")
+        self.btn_active.setObjectName("PrimaryBtn")
+        self.btn_active.setFixedWidth(120)
+        self.btn_active.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_active.clicked.connect(self.show_active_users)
+        top_bar.addWidget(self.btn_active)
+
+        top_bar.addSpacing(5)
 
         self.btn_user = QPushButton(f"👤 {Session.user}")
         self.btn_user.setObjectName("PrimaryBtn")
@@ -7813,6 +8192,35 @@ class MainWindow(QMainWindow):
         # Sekme degistirince arama kutusuna otomatik odaklan ve log sekmesinde yenile
         self.tabs.currentChanged.connect(self.on_tab_changed)
 
+        # Aktif oturum takibi (ortak veriler.db üzerinden kalp atışı)
+        presence_start(Session.user, Session.role)
+        self.presence_timer = QTimer(self)
+        self.presence_timer.setInterval(PRESENCE_INTERVAL_MS)
+        self.presence_timer.timeout.connect(self.on_presence_tick)
+        self.presence_timer.start()
+        self.update_active_label()
+
+    def on_presence_tick(self):
+        presence_touch()
+        self.update_active_label()
+
+    def update_active_label(self):
+        try:
+            count = len(presence_list())
+        except Exception:
+            # Okunamazsa son bilinen sayacı koru (yanlışlıkla 0 gösterme)
+            return
+        if count:
+            self.btn_active.setText(f"👥 Aktif ({count})")
+            self.btn_active.setToolTip(f"O an uygulamayı açmış {count} kullanıcı")
+        else:
+            self.btn_active.setText("👥 Aktif")
+            self.btn_active.setToolTip("O an uygulamayı açmış kullanıcı yok")
+
+    def show_active_users(self):
+        ActiveUsersDialog(self).exec()
+        self.update_active_label()
+
     def on_tab_changed(self, index):
         QTimer.singleShot(0, self.focus_search)
         if Session.can_view_logs and self.tabs.widget(index) == self.log_widget:
@@ -7857,6 +8265,9 @@ class MainWindow(QMainWindow):
         msg.exec()
 
         if msg.clickedButton() == btn_yes:
+            presence_stop()
+            if getattr(self, "presence_timer", None) is not None:
+                self.presence_timer.stop()
             Session.logout()
             settings = QSettings("IhaleSystem", "LoginSettings")
             settings.setValue("auto_login", "false")
@@ -7903,6 +8314,13 @@ class MainWindow(QMainWindow):
         elif w is not None and w == getattr(self, "log_widget", None):
             # log_widget yalnızca yetkili rollerde oluşturulur (Session.can_view_logs)
             self.log_widget.search_edit.setFocus()
+
+    def closeEvent(self, event):
+        # Pencere kapatıldığında oturumu aktif listeden düşür
+        if getattr(self, "presence_timer", None) is not None:
+            self.presence_timer.stop()
+        presence_stop()
+        super().closeEvent(event)
 
 
 if __name__ == "__main__":
