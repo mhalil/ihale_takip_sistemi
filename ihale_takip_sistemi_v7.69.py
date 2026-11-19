@@ -2,7 +2,6 @@ import sys
 import os
 import sqlite3
 import shutil
-import csv
 import hashlib
 import secrets
 import socket
@@ -27,6 +26,10 @@ from PySide6.QtGui import (QIntValidator, QRegularExpressionValidator, QFont,
                             QStandardItem, QStandardItemModel, QIcon)
 
 from enum import IntEnum
+
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 # --- VERITABANI ALAN INDEKSLERI (Magic Number'lardan kurtul) ---
 class Field(IntEnum):
@@ -271,11 +274,11 @@ def add_firm_completer(line_edit, parent=None):
     line_edit.setCompleter(completer)
     return completer
 
-def csv_cell(item, default=""):
-    """CSV hücresini hazırlar: sayısal sütunlar ham sayı, diğerleri metin olarak yazılır.
+def excel_cell(item, default=""):
+    """Tablo hücresini Excel'e uygun ham değere çevirir.
 
-    Böylece Excel/LibreOffice dosyayı açtığında tutar-miktar sütunlarını metin
-    değil sayı olarak görür.
+    Sayısal sütunlar (tutar, miktar vb.) metne dönüştürülmeden gerçek sayı
+    olarak döner; böylece Excel'de sayı biçimleri ve formüller çalışır.
     """
     if item is None:
         return default
@@ -283,9 +286,94 @@ def csv_cell(item, default=""):
     if isinstance(value, bool):
         value = None
     if isinstance(value, (int, float)):
-        return f"{value:.2f}" if isinstance(value, float) else value
+        return value
     text = item.text() if hasattr(item, "text") else str(item)
     return text.replace(" TL", "")
+
+
+def ensure_xlsx_extension(path):
+    """Dosya adı .xlsx ile bitmiyorsa uzantıyı ekler."""
+    if not path:
+        return path
+    if os.path.splitext(path)[1].lower() != ".xlsx":
+        return path + ".xlsx"
+    return path
+
+
+def _xlsx_sheet_name(name):
+    """Excel çalışma sayfası adını geçerli ve en fazla 31 karakter yapar."""
+    for ch in '[]:*?/\\':
+        name = str(name).replace(ch, "-")
+    return (name or "Sayfa")[:31]
+
+
+def _xlsx_new_workbook():
+    wb = Workbook()
+    wb.remove(wb.active)
+    return wb
+
+
+def _xlsx_style_header(ws, header_row, column_count):
+    fill = PatternFill("solid", fgColor="1E3A8A")
+    font = Font(bold=True, color="FFFFFF")
+    thin = Side(style="thin", color="CBD5E1")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    for col in range(1, column_count + 1):
+        cell = ws.cell(row=header_row, column=col)
+        cell.font = font
+        cell.fill = fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = border
+    ws.row_dimensions[header_row].height = 28
+
+
+def _xlsx_write_value(cell, value):
+    cell.value = value
+    if isinstance(value, bool) or value is None:
+        return
+    if isinstance(value, float):
+        # Türkçe Excel'de #.##0,00 olarak görüntülenir.
+        cell.number_format = "#,##0.00"
+    elif isinstance(value, int):
+        cell.number_format = "#,##0"
+
+
+def _xlsx_autosize(ws, min_width=8, max_width=50):
+    for col_idx, column_cells in enumerate(ws.columns, 1):
+        max_len = 0
+        for cell in column_cells:
+            if cell.value is None:
+                continue
+            max_len = max(max_len, len(str(cell.value)))
+        ws.column_dimensions[get_column_letter(col_idx)].width = max(min_width, min(max_width, max_len + 2))
+
+
+def _xlsx_add_table_sheet(wb, sheet_name, headers, rows, title=None):
+    """Tek bir tablo sayfası ekler; başlık, filtre, donmuş satır ve sayı biçimi uygular."""
+    ws = wb.create_sheet(title=_xlsx_sheet_name(sheet_name))
+    header_row = 1
+    if title:
+        ws.cell(row=1, column=1, value=title)
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max(1, len(headers)))
+        title_cell = ws.cell(row=1, column=1)
+        title_cell.font = Font(bold=True, size=12, color="1E3A8A")
+        title_cell.alignment = Alignment(horizontal="left", vertical="center")
+        header_row = 3
+
+    for col, header in enumerate(headers, 1):
+        ws.cell(row=header_row, column=col, value=header)
+    _xlsx_style_header(ws, header_row, len(headers))
+
+    for row_offset, row_values in enumerate(rows, 1):
+        for col, value in enumerate(row_values, 1):
+            _xlsx_write_value(ws.cell(row=header_row + row_offset, column=col), value)
+
+    ws.freeze_panes = ws.cell(row=header_row + 1, column=1)
+    if headers:
+        last_col = get_column_letter(len(headers))
+        ws.auto_filter.ref = f"A{header_row}:{last_col}{ws.max_row}"
+    _xlsx_autosize(ws)
+    return ws
 
 def set_table_empty_state(table, text):
     """Tablo bosken uzerine bilgi etiketi bindirir; veri varsa gizler."""
@@ -1119,10 +1207,10 @@ class FirmDetailDialog(QDialog):
         layout.addLayout(total_layout)
 
         btn_box = QHBoxLayout()
-        self.btn_export = QPushButton("📊 CSV Dışa Aktar")
+        self.btn_export = QPushButton("📊 Excel Dışa Aktar")
         self.btn_export.setObjectName("InfoBtn")
         self.btn_export.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_export.clicked.connect(self.export_to_csv)
+        self.btn_export.clicked.connect(self.export_to_excel)
         btn_box.addWidget(self.btn_export)
         btn_box.addStretch()
         close_btn = QPushButton("Kapat")
@@ -1131,27 +1219,28 @@ class FirmDetailDialog(QDialog):
         btn_box.addWidget(close_btn)
         layout.addLayout(btn_box)
 
-    def export_to_csv(self):
-        default_name = f"{self.firm_name}_ihale_gecmisi.csv"
-        path, _ = QFileDialog.getSaveFileName(self, "Verileri CSV Olarak Kaydet", default_name, "CSV Dosyası (*.csv)")
+    def export_to_excel(self):
+        default_name = f"{self.firm_name}_ihale_gecmisi.xlsx"
+        path, _ = QFileDialog.getSaveFileName(self, "Verileri Excel Olarak Kaydet", default_name, "Excel Dosyası (*.xlsx)")
         if not path:
             return
+        path = ensure_xlsx_extension(path)
         try:
             headers = [self.table.horizontalHeaderItem(i).text() for i in range(self.table.columnCount())]
+            rows = [
+                [excel_cell(self.table.item(row, col)) for col in range(self.table.columnCount())]
+                for row in range(self.table.rowCount())
+            ]
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-            with open(path, mode='w', encoding='utf-8-sig', newline='') as file:
-                writer = csv.writer(file, delimiter=';')
-                writer.writerow([f"Firma: {self.firm_name}"])
-                writer.writerow(headers)
-                for row in range(self.table.rowCount()):
-                    row_data = [csv_cell(self.table.item(row, col)) for col in range(self.table.columnCount())]
-                    writer.writerow(row_data)
+            wb = _xlsx_new_workbook()
+            _xlsx_add_table_sheet(wb, "Firma Detayları", headers, rows, title=f"Firma: {self.firm_name}")
+            wb.save(path)
             QApplication.restoreOverrideCursor()
             QMessageBox.information(self, "Başarılı", f"Veriler başarıyla dışa aktarıldı:\n{path}")
-            log_action("CSV Dışa Aktar (Firma Detayları)", f"Dosya: {path}")
+            log_action("Excel Dışa Aktar (Firma Detayları)", f"Dosya: {path}")
         except Exception as e:
             QApplication.restoreOverrideCursor()
-            QMessageBox.critical(self, "Hata", f"CSV dışa aktarma hatası:\n{e}")
+            QMessageBox.critical(self, "Hata", f"Excel dışa aktarma hatası:\n{e}")
 
 # --- CUSTOM WIDGETS ---
 class SortableTableWidgetItem(QTableWidgetItem):
@@ -2095,11 +2184,21 @@ def get_summary_data(show_all=False):
     conn.close()
     return summary
 
-def get_aggregated_tender_data():
+def _date_year(value):
+    """Tarih değerinin YYYY kısmını döndürür; boşsa ''."""
+    return str(value)[:4] if value else ""
+
+
+def get_aggregated_tender_data(selected_year=None, date_field_idx=5):
     rows = fetch_data()
     # Group by (IKN, Firma, Ihale)
     grouped = {}
     for r in rows:
+        if selected_year and selected_year != "Tümü":
+            raw = r[date_field_idx] if len(r) > date_field_idx else None
+            if _date_year(raw) != selected_year:
+                continue
+
         # r structure: rowid, IKN, Firma, Ihale, Parti No, Tarih, Tutar, ...
         # indexes: 0=rowid, 1=IKN, 2=Firma, 3=Ihale, 4=PartiNo, 5=Tarih, 6=Tutar
         key = (r[1], r[2], r[3])
@@ -2125,23 +2224,19 @@ def get_aggregated_tender_data():
         })
     return result
 
-def get_firm_summary_data(selected_year=None):
+def get_firm_summary_data(selected_year=None, date_field_idx=5):
     # Fetch all data raw to have access to dates
     rows = fetch_data()
     # row index 1=IKN, 2=Firma, 3=Ihale, 5=Tarih, 6=Tutar
     firms = {}
     for r in rows:
         f_name = r[2]
-        tarih_str = r[5]
         tender_key = (r[1], r[2], r[3]) # IKN, Firma, Ihale
 
-        # Filter by year if requested
+        # Filter by selected date field and year if requested
         if selected_year and selected_year != "Tümü":
-            try:
-                row_year = tarih_str[:4] # YYYY-MM-DD
-                if row_year != selected_year:
-                    continue
-            except Exception:
+            raw = r[date_field_idx] if len(r) > date_field_idx else None
+            if _date_year(raw) != selected_year:
                 continue
 
         if f_name not in firms:
@@ -4781,10 +4876,10 @@ class TenderWidget(QWidget):
             btn_layout.addWidget(btn)
 
         btn_layout.addSpacing(10)
-        self.btn_export = QPushButton("📊 CSV Dışa Aktar")
+        self.btn_export = QPushButton("📊 Excel Dışa Aktar")
         self.btn_export.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_export.setObjectName("InfoBtn")
-        self.btn_export.clicked.connect(self.export_to_csv)
+        self.btn_export.clicked.connect(self.export_to_excel)
         btn_layout.addWidget(self.btn_export)
 
         btn_layout.addStretch()
@@ -4991,46 +5086,46 @@ class TenderWidget(QWidget):
         self.btn_completed.setChecked(mode == "completed")
         self.refresh_data()
 
-    def export_to_csv(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Verileri CSV Olarak Kaydet", "", "CSV Dosyası (*.csv)")
+    def export_to_excel(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Verileri Excel Olarak Kaydet", "ihale_detaylari.xlsx", "Excel Dosyası (*.xlsx)")
         if not path:
             return
+        path = ensure_xlsx_extension(path)
 
         try:
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-            with open(path, mode='w', encoding='utf-8-sig', newline='') as file:
-                writer = csv.writer(file, delimiter=';')
+            wb = _xlsx_new_workbook()
 
-                # --- SECTION 1: İHALE LİSTESİ ---
-                writer.writerow(["İHALE LİSTESİ"])
-                headers = [self.tender_table.horizontalHeaderItem(i).text() for i in range(self.tender_table.columnCount())]
-                writer.writerow(headers)
+            # --- SAYFA 1: İHALE LİSTESİ ---
+            headers = [self.tender_table.horizontalHeaderItem(i).text() for i in range(self.tender_table.columnCount())]
+            tender_rows = [
+                [excel_cell(self.tender_table.item(row, col)) for col in range(self.tender_table.columnCount())]
+                for row in range(self.tender_table.rowCount())
+            ]
+            _xlsx_add_table_sheet(wb, "İhale Listesi", headers, tender_rows)
 
-                for row in range(self.tender_table.rowCount()):
-                    row_data = [csv_cell(self.tender_table.item(row, col)) for col in range(self.tender_table.columnCount())]
-                    writer.writerow(row_data)
+            # --- SAYFA 2: SEÇİLİ İHALE DETAYLARI ---
+            row = self.tender_table.currentRow()
+            if row >= 0:
+                tender_ikn = self.tender_table.item(row, 0).text() if self.tender_table.item(row, 0) else ""
+                tender_name = self.tender_table.item(row, 2).text() if self.tender_table.item(row, 2) else ""
+                part_headers = [self.part_table.horizontalHeaderItem(i).text() for i in range(self.part_table.columnCount())]
+                part_rows = [
+                    [excel_cell(self.part_table.item(r, c)) for c in range(self.part_table.columnCount())]
+                    for r in range(self.part_table.rowCount())
+                ]
+                _xlsx_add_table_sheet(
+                    wb, "Seçili İhale Detayları", part_headers, part_rows,
+                    title=f"İhale: {tender_name} (IKN: {tender_ikn})"
+                )
 
-                # --- SECTION 2: SEÇİLİ İHALE DETAYLARI ---
-                row = self.tender_table.currentRow()
-                if row >= 0:
-                    writer.writerow([]) # Boş satır
-                    writer.writerow(["SEÇİLİ İHALE DETAYLARI"])
-                    tender_ikn = self.tender_table.item(row, 0).text() if self.tender_table.item(row, 0) else ""
-                    tender_name = self.tender_table.item(row, 2).text() if self.tender_table.item(row, 2) else ""
-                    writer.writerow([f"İhale: {tender_name} (IKN: {tender_ikn})"])
-
-                    part_headers = [self.part_table.horizontalHeaderItem(i).text() for i in range(self.part_table.columnCount())]
-                    writer.writerow(part_headers)
-
-                    for r in range(self.part_table.rowCount()):
-                        r_data = [csv_cell(self.part_table.item(r, c)) for c in range(self.part_table.columnCount())]
-                        writer.writerow(r_data)
+            wb.save(path)
             QApplication.restoreOverrideCursor()
             QMessageBox.information(self, "Başarılı", f"Veriler başarıyla dışa aktarıldı:\n{path}")
-            log_action("CSV Dışa Aktar (İhale Detayları)", f"Dosya: {path}")
+            log_action("Excel Dışa Aktar (İhale Detayları)", f"Dosya: {path}")
         except Exception as e:
             QApplication.restoreOverrideCursor()
-            QMessageBox.critical(self, "Hata", f"CSV dışa aktarma hatası:\n{e}")
+            QMessageBox.critical(self, "Hata", f"Excel dışa aktarma hatası:\n{e}")
 
     def clear_search(self):
         self.search_edit.clear()
@@ -5332,23 +5427,36 @@ class FirmSummaryWidget(QWidget):
         filter_layout.addWidget(self.cb_year)
 
         filter_layout.addSpacing(10)
+        filter_layout.addWidget(QLabel("Tarih:"))
+        self.cb_date_field = QComboBox()
+        self.cb_date_field.setView(QListView())
+        self.cb_date_field.setItemDelegate(DropdownDelegate())
+        self.cb_date_field.setMinimumWidth(170)
+        self.cb_date_field.addItem("Parti Son Teslim Tarihi", 5)
+        self.cb_date_field.addItem("İhale Tarihi", 25)
+        self.cb_date_field.addItem("Sözleşme Tarihi", 17)
+        self.cb_date_field.addItem("İşe Başlama Tarihi", 26)
+        self.cb_date_field.currentIndexChanged.connect(self.refresh_data)
+        filter_layout.addWidget(self.cb_date_field)
+
+        filter_layout.addSpacing(10)
         self.btn_clear = QPushButton("Temizle")
         self.btn_clear.setToolTip("Temizle (Alt+X)")
         self.btn_clear.clicked.connect(self.clear_filters)
         filter_layout.addWidget(self.btn_clear)
 
         filter_layout.addSpacing(10)
-        self.btn_export = QPushButton("📊 CSV Dışa Aktar")
+        self.btn_export = QPushButton("📊 Excel Dışa Aktar")
         self.btn_export.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_export.setObjectName("InfoBtn")
-        self.btn_export.clicked.connect(self.export_to_csv)
+        self.btn_export.clicked.connect(self.export_to_excel)
         filter_layout.addWidget(self.btn_export)
 
         filter_layout.addSpacing(5)
-        self.btn_export_all = QPushButton("📋 İhale Bilgilerini Kaydet")
+        self.btn_export_all = QPushButton("📋 İhale Detaylarını Dışa Aktar")
         self.btn_export_all.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_export_all.setObjectName("InfoBtn")
-        self.btn_export_all.clicked.connect(self.export_all_tenders_to_csv)
+        self.btn_export_all.clicked.connect(self.export_all_tenders_to_excel)
         filter_layout.addWidget(self.btn_export_all)
 
         filter_layout.addStretch()
@@ -5393,20 +5501,12 @@ class FirmSummaryWidget(QWidget):
         row = item.row()
         firm_name = self.table.item(row, 0).text()
         selected_year = self.cb_year.currentText()
+        date_field_idx = self.cb_date_field.currentData()
+        if date_field_idx is None:
+            date_field_idx = 5
 
-        all_tenders = get_aggregated_tender_data()
+        all_tenders = get_aggregated_tender_data(selected_year, date_field_idx)
         firm_tenders = [t for t in all_tenders if t["firma"] == firm_name]
-
-        # Yıl filtresi uygula
-        if selected_year and selected_year != "Tümü":
-            filtered = []
-            for t in firm_tenders:
-                for p in t["parts"]:
-                    tarih = str(p[5])[:4] if p[5] else ""
-                    if tarih == selected_year:
-                        filtered.append(t)
-                        break
-            firm_tenders = filtered
 
         if firm_tenders:
             dialog = FirmDetailDialog(firm_name, firm_tenders, self)
@@ -5414,80 +5514,95 @@ class FirmSummaryWidget(QWidget):
         else:
             QMessageBox.information(self, "Bilgi", "Bu firmaya ait ihale kaydı bulunamadı.")
 
-    def export_to_csv(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Verileri CSV Olarak Kaydet", "", "CSV Dosyası (*.csv)")
+    def export_to_excel(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Verileri Excel Olarak Kaydet", "firma_ozetleri.xlsx", "Excel Dosyası (*.xlsx)")
         if not path:
             return
+        path = ensure_xlsx_extension(path)
 
         try:
             headers = [self.table.horizontalHeaderItem(i).text() for i in range(self.table.columnCount())]
+            rows = [
+                [excel_cell(self.table.item(row, col)) for col in range(self.table.columnCount())]
+                for row in range(self.table.rowCount())
+            ]
 
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-            with open(path, mode='w', encoding='utf-8-sig', newline='') as file:
-                writer = csv.writer(file, delimiter=';')
-                writer.writerow(headers)
-
-                for row in range(self.table.rowCount()):
-                    row_data = [csv_cell(self.table.item(row, col)) for col in range(self.table.columnCount())]
-                    writer.writerow(row_data)
-
+            wb = _xlsx_new_workbook()
+            _xlsx_add_table_sheet(wb, "Firma Özetleri", headers, rows)
+            wb.save(path)
             QApplication.restoreOverrideCursor()
             QMessageBox.information(self, "Başarılı", f"Veriler başarıyla dışa aktarıldı:\n{path}")
-            log_action("CSV Dışa Aktar (Firma Özetleri)", f"Dosya: {path}")
+            log_action("Excel Dışa Aktar (Firma Özetleri)", f"Dosya: {path}")
         except Exception as e:
             QApplication.restoreOverrideCursor()
-            QMessageBox.critical(self, "Hata", f"CSV dışa aktarma hatası:\n{e}")
+            QMessageBox.critical(self, "Hata", f"Excel dışa aktarma hatası:\n{e}")
 
-    def export_all_tenders_to_csv(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Tüm İhale Bilgilerini CSV Olarak Kaydet", "tum_ihale_bilgileri.csv", "CSV Dosyası (*.csv)")
+    def export_all_tenders_to_excel(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Tüm İhale Bilgilerini Excel Olarak Kaydet", "tum_ihale_bilgileri.xlsx", "Excel Dosyası (*.xlsx)")
         if not path:
             return
+        path = ensure_xlsx_extension(path)
         try:
-            all_tenders = get_aggregated_tender_data()
-            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-            with open(path, mode='w', encoding='utf-8-sig', newline='') as file:
-                writer = csv.writer(file, delimiter=';')
-                writer.writerow([
-                    "IKN", "Yüklenici Firma", "İhale Adı", "Sözleşme Tutarı",
-                    "Toplam Parti Sayısı", "Sözleşme Tarihi", "İhale Türü",
-                    "İhale Usulü", "Yak. Maliyet", "İhale Tarihi",
-                    "İşe Başlama Tarihi", "Parti Teslim Süresi", "İşin Bitiş (Son parti teslim) Tarihi"
-                ])
-                for t in all_tenders:
-                    parts = t["parts"]
-                    p0 = parts[0] if parts else []
-                    sozlesme_tarihi = p0[17] if len(p0) > 17 else ""
-                    ihale_turu = p0[22] if len(p0) > 22 else ""
-                    ihale_usulu = p0[23] if len(p0) > 23 else ""
-                    # Yak. Maliyet TEXT karışık formatta olabilir; parse_money doğru çevirir
-                    yak_raw = p0[24] if len(p0) > 24 and p0[24] else 0
-                    yak_num = parse_money(yak_raw)
-                    ihale_tarihi = p0[25] if len(p0) > 25 else ""
-                    ise_baslama = p0[26] if len(p0) > 26 else ""
-                    parti_teslim_suresi = p0[27] if len(p0) > 27 else ""
-                    teslim_tarihleri = [p[5] for p in parts if len(p) > 5 and p[5]]
-                    isin_bitis = max(teslim_tarihleri) if teslim_tarihleri else ""
+            selected_year = self.cb_year.currentText()
+            date_field_idx = self.cb_date_field.currentData()
+            if date_field_idx is None:
+                date_field_idx = 5
+            all_tenders = get_aggregated_tender_data(selected_year, date_field_idx)
+            headers = [
+                "IKN", "Yüklenici Firma", "İhale Adı", "Sözleşme Tutarı",
+                "Toplam Parti Sayısı", "Sözleşme Tarihi", "İhale Türü",
+                "İhale Usulü", "Yak. Maliyet", "İhale Tarihi",
+                "İşe Başlama Tarihi", "Parti Teslim Süresi", "İşin Bitiş (Son parti teslim) Tarihi"
+            ]
+            rows = []
+            for t in all_tenders:
+                parts = t["parts"]
+                p0 = parts[0] if parts else []
+                sozlesme_tarihi = p0[17] if len(p0) > 17 else ""
+                ihale_turu = p0[22] if len(p0) > 22 else ""
+                ihale_usulu = p0[23] if len(p0) > 23 else ""
+                # Yak. Maliyet TEXT karışık formatta olabilir; parse_money doğru çevirir
+                yak_raw = p0[24] if len(p0) > 24 and p0[24] else 0
+                yak_num = parse_money(yak_raw)
+                ihale_tarihi = p0[25] if len(p0) > 25 else ""
+                ise_baslama = p0[26] if len(p0) > 26 else ""
+                parti_teslim_suresi = p0[27] if len(p0) > 27 else ""
+                teslim_tarihleri = [p[5] for p in parts if len(p) > 5 and p[5]]
+                isin_bitis = max(teslim_tarihleri) if teslim_tarihleri else ""
 
-                    # Para sütunları ham sayı olarak yazılır (Excel'de sayı olarak görünsün)
-                    writer.writerow([
-                        t["ikn"], t["firma"], t["ihale"],
-                        f"{float(t['total_amount'] or 0):.2f}",
-                        len(parts),
-                        sozlesme_tarihi, ihale_turu, ihale_usulu,
-                        f"{yak_num:.2f}" if yak_num else "", ihale_tarihi, ise_baslama,
-                        parti_teslim_suresi, isin_bitis,
-                    ])
+                # Para ve sayı sütunları gerçek sayı olarak yazılır
+                rows.append([
+                    t["ikn"], t["firma"], t["ihale"],
+                    float(t["total_amount"] or 0),
+                    len(parts),
+                    sozlesme_tarihi, ihale_turu, ihale_usulu,
+                    yak_num if yak_num else None, ihale_tarihi, ise_baslama,
+                    parti_teslim_suresi, isin_bitis,
+                ])
+
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            wb = _xlsx_new_workbook()
+            _xlsx_add_table_sheet(wb, "Tüm İhale Bilgileri", headers, rows)
+            wb.save(path)
             QApplication.restoreOverrideCursor()
             QMessageBox.information(self, "Başarılı", f"Tüm ihale bilgileri başarıyla dışa aktarıldı:\n{path}")
-            log_action("CSV Dışa Aktar (Tüm İhale Bilgileri Özet)", f"Dosya: {path}")
+            log_action("Excel Dışa Aktar (Tüm İhale Bilgileri Özet)", f"Dosya: {path}")
         except Exception as e:
             QApplication.restoreOverrideCursor()
-            QMessageBox.critical(self, "Hata", f"CSV dışa aktarma hatası:\n{e}")
+            QMessageBox.critical(self, "Hata", f"Excel dışa aktarma hatası:\n{e}")
 
     def refresh_data(self):
-        # Yıl listesini her tazelemede güncelle (yeni eklenen kayıtların yılı da görünsün)
+        # Yıl listesini seçili tarih alanına göre her tazelemede güncelle
         rows = fetch_data()
-        years = sorted(list(set(r[5][:4] for r in rows if r[5])), reverse=True)
+        date_field_idx = self.cb_date_field.currentData()
+        if date_field_idx is None:
+            date_field_idx = 5
+        years = sorted(
+            list(set(_date_year(r[date_field_idx]) for r in rows
+                     if len(r) > date_field_idx and r[date_field_idx])),
+            reverse=True
+        )
         secili_yil = self.cb_year.currentText()
         mevcut = [self.cb_year.itemText(i) for i in range(self.cb_year.count())]
         if mevcut[1:] != years:
@@ -5502,13 +5617,18 @@ class FirmSummaryWidget(QWidget):
 
         self.table.blockSignals(True)
         selected_year = self.cb_year.currentText()
-        self.all_firms = get_firm_summary_data(selected_year)
+        self.all_firms = get_firm_summary_data(selected_year, date_field_idx)
         self.apply_filter()
         self.table.blockSignals(False)
 
     def clear_filters(self):
         self.search_edit.clear()
+        self.cb_date_field.blockSignals(True)
+        self.cb_date_field.setCurrentIndex(0)
+        self.cb_date_field.blockSignals(False)
+        self.cb_year.blockSignals(True)
         self.cb_year.setCurrentIndex(0)
+        self.cb_year.blockSignals(False)
         self.refresh_data()
 
     def apply_filter(self):
@@ -6096,10 +6216,10 @@ class DetailWidget(QWidget):
             """)
             top_btn_layout.addWidget(btn)
 
-        btn_export = QPushButton("📊 CSV Dışa Aktar")
+        btn_export = QPushButton("📊 Excel Dışa Aktar")
         btn_export.setObjectName("InfoBtn")
         btn_export.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_export.clicked.connect(self.export_to_csv)
+        btn_export.clicked.connect(self.export_to_excel)
         top_btn_layout.addWidget(btn_export)
 
         btn_new = QPushButton("➕ Yeni İhale Ekle")
@@ -6133,13 +6253,25 @@ class DetailWidget(QWidget):
         self.date_end.setDate(QDate.currentDate().addMonths(6))
         self.date_sep_label = QLabel("-")
 
+        # Tarih filtresinin uygulanacağı alan (varsayılan: Parti Son Teslim Tarihi)
+        self.cb_date_field = QComboBox()
+        self.cb_date_field.setView(QListView())
+        self.cb_date_field.setItemDelegate(DropdownDelegate())
+        self.cb_date_field.setMinimumWidth(170)
+        self.cb_date_field.addItem("Parti Son Teslim Tarihi", 5)
+        self.cb_date_field.addItem("İhale Tarihi", 25)
+        self.cb_date_field.addItem("Sözleşme Tarihi", 17)
+        self.cb_date_field.addItem("İşe Başlama Tarihi", 26)
+
         # Başlangıçta gizli
+        self.cb_date_field.setVisible(False)
         self.date_start.setVisible(False)
         self.date_sep_label.setVisible(False)
         self.date_end.setVisible(False)
 
         self.cb_date_filter.stateChanged.connect(self.apply_filters)
         self.cb_date_filter.toggled.connect(self.toggle_date_filter_visibility)
+        self.cb_date_field.currentIndexChanged.connect(self.apply_filters)
         self.date_start.dateChanged.connect(self.apply_filters)
         self.date_end.dateChanged.connect(self.apply_filters)
 
@@ -6148,6 +6280,7 @@ class DetailWidget(QWidget):
 
         f_panel.addWidget(QLabel("Ara:")); f_panel.addWidget(self.search, stretch=1); f_panel.addWidget(btn_clr)
         f_panel.addSpacing(15); f_panel.addWidget(self.cb_date_filter)
+        f_panel.addWidget(self.cb_date_field)
         f_panel.addWidget(self.date_start); f_panel.addWidget(self.date_sep_label); f_panel.addWidget(self.date_end)
         f_panel.addSpacing(15); f_panel.addWidget(QLabel("Firma:")); f_panel.addWidget(self.cb_firm, stretch=1)
         f_panel.addWidget(QLabel("İhale:")); f_panel.addWidget(self.cb_tender, stretch=1)
@@ -6221,35 +6354,36 @@ class DetailWidget(QWidget):
 
 
     def toggle_date_filter_visibility(self, checked):
+        self.cb_date_field.setVisible(checked)
         self.date_start.setVisible(checked)
         self.date_sep_label.setVisible(checked)
         self.date_end.setVisible(checked)
 
-    def export_to_csv(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Verileri CSV Olarak Kaydet", "", "CSV Dosyası (*.csv)")
+    def export_to_excel(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Verileri Excel Olarak Kaydet", "tum_ihale_parti_bilgileri.xlsx", "Excel Dosyası (*.xlsx)")
         if not path:
             return
+        path = ensure_xlsx_extension(path)
 
         try:
             # "İşlem" sütunu (index 29) hariç tüm sütunları dışa aktar
             export_cols = [i for i in range(self.table.columnCount()) if i != 29]
             headers = [self.table.horizontalHeaderItem(i).text() for i in export_cols]
+            rows = [
+                [excel_cell(self.table.item(row, col)) for col in export_cols]
+                for row in range(self.table.rowCount())
+            ]
 
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-            with open(path, mode='w', encoding='utf-8-sig', newline='') as file:
-                writer = csv.writer(file, delimiter=';')
-                writer.writerow(headers)
-
-                for row in range(self.table.rowCount()):
-                    row_data = [csv_cell(self.table.item(row, col)) for col in export_cols]
-                    writer.writerow(row_data)
-
+            wb = _xlsx_new_workbook()
+            _xlsx_add_table_sheet(wb, "İhale ve Parti Bilgileri", headers, rows)
+            wb.save(path)
             QApplication.restoreOverrideCursor()
             QMessageBox.information(self, "Başarılı", f"Veriler başarıyla dışa aktarıldı:\n{path}")
-            log_action("CSV Dışa Aktar", f"Dosya: {path}")
+            log_action("Excel Dışa Aktar", f"Dosya: {path}")
         except Exception as e:
             QApplication.restoreOverrideCursor()
-            QMessageBox.critical(self, "Hata", f"CSV dışa aktarma hatası:\n{e}")
+            QMessageBox.critical(self, "Hata", f"Excel dışa aktarma hatası:\n{e}")
 
     def refresh_data(self):
         # Mevcut seçimleri kaydet
@@ -6334,6 +6468,9 @@ class DetailWidget(QWidget):
         use_date_filter = self.cb_date_filter.isChecked()
         d_start = self.date_start.date().toString("yyyy-MM-dd")
         d_end = self.date_end.date().toString("yyyy-MM-dd")
+        date_field_idx = self.cb_date_field.currentData()
+        if date_field_idx is None:
+            date_field_idx = 5
 
         # Filtreleme Mantığı
         filtered = []
@@ -6347,7 +6484,8 @@ class DetailWidget(QWidget):
                 continue
 
             if use_date_filter:
-                tarih_raw = str(r[5])[:10] if r[5] else ""
+                raw_tarih = r[date_field_idx] if len(r) > date_field_idx else None
+                tarih_raw = str(raw_tarih)[:10] if raw_tarih else ""
                 if not tarih_raw or not (d_start <= tarih_raw <= d_end):
                     continue
 
@@ -6412,7 +6550,7 @@ class DetailWidget(QWidget):
             parti_text = str(r[4]) if len(r) > 4 and r[4] not in (None, "") else ""
             parti_val = int(parti_text) if parti_text.isdigit() else 0
             parti_item = SortableTableWidgetItem(parti_text)
-            # Bos Parti No icin UserRole 0 degil None yazilir: CSV'de '0'
+            # Bos Parti No icin UserRole 0 degil None yazilir: Excel'de '0'
             # gorunmesin, siralama (SortableTableWidgetItem) boslugu one alsin.
             parti_item.setData(Qt.ItemDataRole.UserRole, parti_val if parti_text else None)
             parti_item.setTextAlignment(Qt.AlignCenter)
@@ -6566,6 +6704,7 @@ class DetailWidget(QWidget):
         self.search.clear()
         self.cb_firm.setCurrentIndex(0)
         self.cb_tender.setCurrentIndex(0)
+        self.cb_date_field.setCurrentIndex(0)
         self.cb_date_filter.setChecked(False)
     def open_edit(self, r):
         if EditDialog(r, self).exec(): self.parent_window.refresh_all()
@@ -7839,7 +7978,7 @@ class AboutDialog(QDialog):
 
         # Info Text
         info_text = """
-        <h3 style='color: #3b82f6; margin-bottom:0;'>İhale Takip Uygulaması v7.68</h3>
+        <h3 style='color: #3b82f6; margin-bottom:0;'>İhale Takip Uygulaması v7.69</h3>
         <br>
         <b>Geliştirici Bilgileri:</b></p>
         <ul>
