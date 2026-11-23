@@ -7232,7 +7232,7 @@ class SettingsDialog(QDialog):
         # kendi isteğine göre büyütebilir / küçültebilir.
         self.setMinimumSize(700, 480)
         # 7 sekme ~875px gerektiriyor; 980px'te hepsi varsayılan boyutta sığar
-        self.resize(980, 700)
+        self.resize(950, 500)
         self.parent_window = parent
         self.setup_ui()
 
@@ -7978,7 +7978,7 @@ class AboutDialog(QDialog):
 
         # Info Text
         info_text = """
-        <h3 style='color: #3b82f6; margin-bottom:0;'>İhale Takip Uygulaması v7.69</h3>
+        <h3 style='color: #3b82f6; margin-bottom:0;'>İhale Takip Uygulaması v7.70</h3>
         <br>
         <b>Geliştirici Bilgileri:</b></p>
         <ul>
